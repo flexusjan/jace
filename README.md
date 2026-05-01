@@ -40,6 +40,12 @@ Für Portainer wird kein lokaler Build benötigt. Der App-Container verwendet
 das Image aus `JACE_IMAGE`. Setze dort den vollständigen Namen des Images, das
 Portainer deployen soll, zum Beispiel `registry.example.com/jace-the-price-tracker:latest`.
 
+Der Postgres-Container nutzt standardmäßig `postgres:17-alpine`. Das ist
+absichtlich nicht `postgres:18-alpine`, weil Postgres 18 im offiziellen Docker-
+Image eine neue Datenverzeichnis-Struktur verwendet und mit bestehenden Volumes
+aus älteren Images ohne vorheriges `pg_upgrade` nicht startet. Wenn du bewusst
+auf Postgres 18 migriert hast, kannst du `POSTGRES_IMAGE` entsprechend setzen.
+
 Frontend:
 
 ```text
