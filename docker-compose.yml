@@ -1,0 +1,8 @@
+services:
+  tracker:
+    build: .
+    image: jace-the-price-tracker:local
+    volumes:
+      - ./data:/app/data
+      - ./examples:/app/examples:ro
+    command: ["track", "--db", "/app/data/prices.sqlite", "/app/examples/cards.txt", "--currency", "eur"]
