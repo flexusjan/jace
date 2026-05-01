@@ -10,6 +10,8 @@ class CardRequest:
     name: str
     set_code: str | None = None
     collector_number: str | None = None
+    condition: str = "NM"
+    language: str = "English"
 
 
 @dataclass(frozen=True)
@@ -21,3 +23,4 @@ class CardPrice:
     currency: str
     price: Decimal | None
     source_url: str
+    image_url: str | None = None

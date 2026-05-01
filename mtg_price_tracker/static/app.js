@@ -1,23 +1,59 @@
 const state = {
   cards: [],
-  selectedName: null,
-  query: ""
+  selectedId: null,
+  query: "",
+  sortKey: "name",
+  sortDirection: "asc",
+  selectedIds: new Set()
 };
 
 const cardsBody = document.querySelector("#cards");
 const detail = document.querySelector("#detail");
 const search = document.querySelector("#search");
 const refresh = document.querySelector("#refresh");
+const priceRefresh = document.querySelector("#price-refresh");
+const refreshState = document.querySelector("#refresh-state");
+const refreshTimes = document.querySelector("#refresh-times");
 const cardCount = document.querySelector("#card-count");
 const portfolioValue = document.querySelector("#portfolio-value");
+const importForm = document.querySelector("#import-form");
+const importSubmit = document.querySelector("#import-submit");
+const importStatus = document.querySelector("#import-status");
+const importResults = document.querySelector("#import-results");
+const importProgress = document.querySelector("#import-progress");
+const importProgressBar = document.querySelector("#import-progress-bar");
+const importTabs = document.querySelectorAll("[data-import-tab]");
+const importPanels = document.querySelectorAll("[data-import-panel]");
+const singleCard = document.querySelector("#single-card");
+const cardFile = document.querySelector("#card-file");
+const moxfieldUrl = document.querySelector("#moxfield-url");
+const currency = document.querySelector("#currency");
+const sortButtons = document.querySelectorAll("[data-sort]");
+const selectAll = document.querySelector("#select-all");
+const selectionCount = document.querySelector("#selection-count");
+const deleteSelected = document.querySelector("#delete-selected");
+const ACTIVE_IMPORT_JOB_KEY = "jace.activeImportJobId";
 
 refresh.addEventListener("click", loadCards);
+priceRefresh.addEventListener("click", refreshPricesNow);
 search.addEventListener("input", event => {
   state.query = event.target.value.toLowerCase();
   render();
 });
+importTabs.forEach(tab => {
+  tab.addEventListener("click", () => setImportTab(tab.dataset.importTab));
+});
+importForm.addEventListener("submit", submitImport);
+sortButtons.forEach(button => {
+  button.addEventListener("click", () => setSort(button.dataset.sort));
+});
+selectAll.addEventListener("change", toggleVisibleSelection);
+deleteSelected.addEventListener("click", deleteSelectedCards);
 
 loadCards();
+loadRefreshStatus();
+setInterval(loadRefreshStatus, 30000);
+resumeActiveImport();
 
 async function loadCards() {
   refresh.disabled = true;
@@ -28,8 +64,9 @@ async function loadCards() {
     }
     const payload = await response.json();
     state.cards = payload.cards;
-    if (!state.selectedName && state.cards.length > 0) {
-      state.selectedName = state.cards[0].name;
+    reconcileSelection();
+    if (!state.selectedId && state.cards.length > 0) {
+      state.selectedId = state.cards[0].id;
     }
     render();
   } catch (error) {
@@ -39,16 +76,285 @@ async function loadCards() {
   }
 }
 
+async function loadRefreshStatus() {
+  try {
+    const response = await fetch("/api/refresh-status", { cache: "no-store" });
+    const status = await response.json();
+    if (!response.ok) {
+      throw new Error(status.error || `Request failed with status ${response.status}`);
+    }
+    renderRefreshStatus(status);
+  } catch (error) {
+    refreshState.textContent = "Refresh status unavailable";
+    refreshTimes.textContent = error.message;
+  }
+}
+
+async function refreshPricesNow() {
+  priceRefresh.disabled = true;
+  refreshState.textContent = "Starting price update...";
+  try {
+    const response = await fetch("/api/refresh", { method: "POST" });
+    const status = await response.json();
+    if (!response.ok && response.status !== 409) {
+      throw new Error(status.error || `Request failed with status ${response.status}`);
+    }
+    renderRefreshStatus(status);
+    await pollPriceRefresh();
+  } catch (error) {
+    refreshState.textContent = "Could not update prices";
+    refreshTimes.textContent = error.message;
+    priceRefresh.disabled = false;
+  }
+}
+
+async function pollPriceRefresh() {
+  while (true) {
+    await delay(1000);
+    const response = await fetch("/api/refresh-status", { cache: "no-store" });
+    const status = await response.json();
+    if (!response.ok) {
+      throw new Error(status.error || `Request failed with status ${response.status}`);
+    }
+    renderRefreshStatus(status);
+    if (!status.running) {
+      await loadCards();
+      return;
+    }
+  }
+}
+
+function renderRefreshStatus(status) {
+  priceRefresh.disabled = Boolean(status.running);
+  if (status.running) {
+    refreshState.textContent = "Updating prices...";
+  } else if (status.error) {
+    refreshState.textContent = "Last price update failed";
+  } else {
+    const refreshed = Number(status.refreshed || 0);
+    refreshState.textContent = status.last_finished_at ? `Last update refreshed ${refreshed} cards` : "Prices idle";
+  }
+
+  const last = status.last_finished_at ? formatDate(status.last_finished_at) : "n/a";
+  const next = status.next_run_at ? formatDate(status.next_run_at) : (status.running ? "after current update" : "n/a");
+  refreshTimes.textContent = `Last check ${last} · Next check ${next}`;
+}
+
+function setImportTab(name) {
+  importTabs.forEach(tab => {
+    tab.classList.toggle("active", tab.dataset.importTab === name);
+  });
+  importPanels.forEach(panel => {
+    panel.classList.toggle("hidden", panel.dataset.importPanel !== name);
+  });
+  importStatus.textContent = "";
+  importResults.innerHTML = "";
+  resetProgress();
+}
+
+async function submitImport(event) {
+  event.preventDefault();
+  importSubmit.disabled = true;
+  importStatus.className = "import-status";
+  importStatus.textContent = "Preparing import...";
+  importResults.innerHTML = "";
+  resetProgress();
+
+  try {
+    const payload = await importPayload();
+    const response = await fetch("/api/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || `Request failed with status ${response.status}`);
+    }
+
+    rememberActiveImport(result.id);
+    await pollImport(result.id);
+    clearImportInput(payload.source);
+  } catch (error) {
+    forgetActiveImport();
+    importStatus.classList.add("error");
+    importStatus.textContent = error.message;
+    importResults.innerHTML = "";
+  } finally {
+    importSubmit.disabled = false;
+  }
+}
+
+async function pollImport(jobId) {
+  if (!jobId) {
+    throw new Error("Import job did not return an id");
+  }
+
+  let job = null;
+  while (true) {
+    const response = await fetch(`/api/import-jobs/${encodeURIComponent(jobId)}`, { cache: "no-store" });
+    job = await response.json();
+    if (!response.ok || job.error && !job.id) {
+      throw new Error(job.error || `Request failed with status ${response.status}`);
+    }
+
+    renderImportProgress(job);
+    if (job.status === "done") {
+      importStatus.classList.toggle("warning", Boolean(job.failed));
+      renderImportResults(job);
+      await loadCardsAfterImport(job);
+      forgetActiveImport();
+      return;
+    }
+    if (job.status === "error") {
+      forgetActiveImport();
+      throw new Error(job.error || "Import failed");
+    }
+    await delay(500);
+  }
+}
+
+async function resumeActiveImport() {
+  const jobId = localStorage.getItem(ACTIVE_IMPORT_JOB_KEY);
+  if (!jobId) {
+    return;
+  }
+
+  importSubmit.disabled = true;
+  importStatus.className = "import-status";
+  importStatus.textContent = "Resuming import progress...";
+  try {
+    await pollImport(jobId);
+  } catch (error) {
+    forgetActiveImport();
+    importStatus.classList.add("error");
+    importStatus.textContent = error.message;
+  } finally {
+    importSubmit.disabled = false;
+  }
+}
+
+function rememberActiveImport(jobId) {
+  if (jobId) {
+    localStorage.setItem(ACTIVE_IMPORT_JOB_KEY, jobId);
+  }
+}
+
+function forgetActiveImport() {
+  localStorage.removeItem(ACTIVE_IMPORT_JOB_KEY);
+}
+
+async function loadCardsAfterImport(job) {
+  const summary = `${job.processed}/${job.total} processed, ${job.imported} imported, ${job.failed} failed`;
+  await loadCards();
+  importStatus.textContent = summary;
+  importStatus.classList.toggle("warning", Boolean(job.failed));
+}
+
+function renderImportProgress(job) {
+  const total = Number(job.total || 0);
+  const started = Number(job.started || 0);
+  const processed = Number(job.processed || 0);
+  const imported = Number(job.imported || 0);
+  const failed = Number(job.failed || 0);
+  const visibleProgress = Math.max(processed, started);
+  const percent = total > 0 ? Math.round((visibleProgress / total) * 100) : 0;
+
+  importProgress.classList.remove("hidden");
+  importProgress.setAttribute("aria-hidden", "false");
+  importProgressBar.style.width = `${Math.min(percent, 100)}%`;
+  const current = job.current_card && processed < total ? `, working on ${job.current_card}` : "";
+  importStatus.textContent = `${processed}/${total} processed, ${imported} imported, ${failed} failed${current}`;
+}
+
+function resetProgress() {
+  importProgress.classList.add("hidden");
+  importProgress.setAttribute("aria-hidden", "true");
+  importProgressBar.style.width = "0%";
+}
+
+async function importPayload() {
+  const source = document.querySelector("[data-import-tab].active").dataset.importTab;
+  if (source === "moxfield") {
+    return {
+      source: "moxfield",
+      url: moxfieldUrl.value.trim(),
+      currency: currency.value
+    };
+  }
+
+  if (source === "file") {
+    const file = cardFile.files[0];
+    if (!file) {
+      throw new Error("Choose a .txt or .csv file first");
+    }
+    return {
+      source: file.name.toLowerCase().endsWith(".csv") ? "csv" : "text",
+      text: await file.text(),
+      currency: currency.value
+    };
+  }
+
+  return {
+    source: "text",
+    text: singleCard.value.trim(),
+    currency: currency.value
+  };
+}
+
+function renderImportResults(result) {
+  if (!result.failed) {
+    importResults.innerHTML = "";
+    return;
+  }
+  importResults.innerHTML = `
+    <div class="failure-list">
+      <strong>Failed cards</strong>
+      <ul>
+        ${result.failures.map(failure => `
+          <li>
+            <span>${escapeHtml(failure.name)}</span>
+            <small>${escapeHtml(failure.error)}</small>
+          </li>
+        `).join("")}
+      </ul>
+    </div>
+  `;
+}
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function clearImportInput(source) {
+  if (source === "moxfield") {
+    moxfieldUrl.value = "";
+    return;
+  }
+  singleCard.value = "";
+  cardFile.value = "";
+}
+
 function render() {
   const filtered = state.cards.filter(card => {
     const haystack = `${card.name} ${card.set_code} ${card.collector_number}`.toLowerCase();
     return haystack.includes(state.query);
   });
+  const sorted = sortCards(filtered);
 
-  cardsBody.innerHTML = filtered.map(card => rowTemplate(card)).join("");
+  updateSortButtons();
+  updateSelectionControls(sorted);
+  cardsBody.innerHTML = sorted.map(card => rowTemplate(card)).join("");
+  cardsBody.querySelectorAll(".row-select").forEach(input => {
+    input.addEventListener("click", event => event.stopPropagation());
+    input.addEventListener("change", event => {
+      setCardSelection(event.target.value, event.target.checked);
+      render();
+    });
+  });
   cardsBody.querySelectorAll("tr").forEach(row => {
     row.addEventListener("click", () => {
-      state.selectedName = row.dataset.name;
+      state.selectedId = row.dataset.cardId;
       render();
     });
   });
@@ -61,19 +367,160 @@ function render() {
   cardCount.textContent = `${state.cards.length} cards`;
   portfolioValue.textContent = `${total.toFixed(2)} ${currency}`.trim();
 
-  const selected = state.cards.find(card => card.name === state.selectedName) || filtered[0];
+  const selected = state.cards.find(card => card.id === state.selectedId) || sorted[0];
   renderDetail(selected);
+}
+
+function reconcileSelection() {
+  const knownIds = new Set(state.cards.map(card => card.id));
+  state.selectedIds.forEach(id => {
+    if (!knownIds.has(id)) {
+      state.selectedIds.delete(id);
+    }
+  });
+  if (state.selectedId && !state.cards.some(card => card.id === state.selectedId)) {
+    state.selectedId = state.cards[0]?.id || null;
+  }
+}
+
+function setCardSelection(id, selected) {
+  if (selected) {
+    state.selectedIds.add(id);
+  } else {
+    state.selectedIds.delete(id);
+  }
+}
+
+function toggleVisibleSelection(event) {
+  const visibleCards = visibleSortedCards();
+  visibleCards.forEach(card => setCardSelection(card.id, event.target.checked));
+  render();
+}
+
+function visibleSortedCards() {
+  const filtered = state.cards.filter(card => {
+    const haystack = `${card.name} ${card.set_code} ${card.collector_number}`.toLowerCase();
+    return haystack.includes(state.query);
+  });
+  return sortCards(filtered);
+}
+
+function updateSelectionControls(visibleCards) {
+  const visibleIds = visibleCards.map(card => card.id);
+  const selectedVisible = visibleIds.filter(id => state.selectedIds.has(id)).length;
+  selectAll.checked = visibleIds.length > 0 && selectedVisible === visibleIds.length;
+  selectAll.indeterminate = selectedVisible > 0 && selectedVisible < visibleIds.length;
+
+  const selectedCount = state.selectedIds.size;
+  selectionCount.textContent = `${selectedCount} selected`;
+  deleteSelected.disabled = selectedCount === 0;
+}
+
+async function deleteSelectedCards() {
+  const ids = Array.from(state.selectedIds);
+  if (ids.length === 0) {
+    return;
+  }
+  const confirmed = window.confirm(`Delete ${ids.length} selected card${ids.length === 1 ? "" : "s"} and all price history?`);
+  if (!confirmed) {
+    return;
+  }
+
+  deleteSelected.disabled = true;
+  try {
+    const response = await fetch("/api/cards", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tracking_ids: ids })
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || `Request failed with status ${response.status}`);
+    }
+    state.selectedIds.clear();
+    await loadCards();
+  } catch (error) {
+    detail.innerHTML = `<h2>Could not delete cards</h2><p class="muted">${escapeHtml(error.message)}</p>`;
+    deleteSelected.disabled = false;
+  }
+}
+
+function setSort(key) {
+  if (state.sortKey === key) {
+    state.sortDirection = state.sortDirection === "asc" ? "desc" : "asc";
+  } else {
+    state.sortKey = key;
+    state.sortDirection = defaultSortDirection(key);
+  }
+  render();
+}
+
+function sortCards(cards) {
+  const direction = state.sortDirection === "asc" ? 1 : -1;
+  return cards.slice().sort((left, right) => {
+    const comparison = compareValues(sortValue(left, state.sortKey), sortValue(right, state.sortKey));
+    if (comparison !== 0) {
+      return comparison * direction;
+    }
+    return compareValues(left.name.toLowerCase(), right.name.toLowerCase());
+  });
+}
+
+function sortValue(card, key) {
+  if (key === "set") {
+    return `${card.set_code} ${card.collector_number}`.toLowerCase();
+  }
+  if (key === "condition" || key === "language") {
+    return String(card[key] || "").toLowerCase();
+  }
+  if (key === "quantity") {
+    return Number(card.quantity || 0);
+  }
+  if (key === "latest_price" || key === "change") {
+    const value = card[key];
+    return value === null || value === undefined ? Number.NEGATIVE_INFINITY : Number(value);
+  }
+  if (key === "latest_captured_at") {
+    return new Date(card.latest_captured_at).getTime();
+  }
+  return String(card.name || "").toLowerCase();
+}
+
+function compareValues(left, right) {
+  if (typeof left === "number" && typeof right === "number") {
+    return left - right;
+  }
+  return String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: "base" });
+}
+
+function defaultSortDirection(key) {
+  return ["quantity", "latest_price", "change", "latest_captured_at"].includes(key) ? "desc" : "asc";
+}
+
+function updateSortButtons() {
+  sortButtons.forEach(button => {
+    const active = button.dataset.sort === state.sortKey;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-sort", active ? (state.sortDirection === "asc" ? "ascending" : "descending") : "none");
+    button.dataset.direction = active ? state.sortDirection : "";
+  });
 }
 
 function rowTemplate(card) {
   const change = Number(card.change || 0);
   const changeClass = change > 0 ? "gain" : change < 0 ? "loss" : "";
-  const selected = card.name === state.selectedName ? "selected" : "";
+  const selected = card.id === state.selectedId ? "selected" : "";
+  const checked = state.selectedIds.has(card.id) ? "checked" : "";
   return `
-    <tr class="${selected}" data-name="${escapeHtml(card.name)}">
+    <tr class="${selected}" data-card-id="${escapeHtml(card.id)}">
+      <td class="select-column">
+        <input class="row-select" type="checkbox" value="${escapeHtml(card.id)}" aria-label="Select ${escapeHtml(card.name)}" ${checked}>
+      </td>
       <td class="card-name">${escapeHtml(card.name)}</td>
       <td>${escapeHtml(card.set_code.toUpperCase())} #${escapeHtml(card.collector_number)}</td>
       <td>${card.quantity}</td>
+      <td>${escapeHtml(card.condition || "NM")}</td>
+      <td>${escapeHtml(card.language || "English")}</td>
       <td>${money(card.latest_price, card.currency)}</td>
       <td class="${changeClass}">${signedMoney(card.change, card.currency)}</td>
       <td>${formatDate(card.latest_captured_at)}</td>
@@ -89,8 +536,9 @@ function renderDetail(card) {
 
   const points = card.history.filter(point => point.price !== null);
   detail.innerHTML = `
+    ${cardImage(card)}
     <h2>${escapeHtml(card.name)}</h2>
-    <p class="muted">${escapeHtml(card.set_code.toUpperCase())} #${escapeHtml(card.collector_number)} · ${card.quantity} tracked</p>
+    <p class="muted">${escapeHtml(card.set_code.toUpperCase())} #${escapeHtml(card.collector_number)} · ${card.quantity} tracked · ${escapeHtml(card.condition || "NM")} · ${escapeHtml(card.language || "English")}</p>
     ${chartSvg(points, card.currency)}
     <ul class="history-list">
       ${card.history.slice().reverse().map(point => `
@@ -100,6 +548,17 @@ function renderDetail(card) {
         </li>
       `).join("")}
     </ul>
+  `;
+}
+
+function cardImage(card) {
+  if (!card.has_image_url && !card.has_cached_image) {
+    return "";
+  }
+  return `
+    <div class="card-image-wrap">
+      <img class="card-image" src="/api/card-images/${encodeURIComponent(card.scryfall_id)}" alt="${escapeHtml(card.name)}">
+    </div>
   `;
 }
 
@@ -126,10 +585,10 @@ function chartSvg(points, currency) {
 
   return `
     <svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Price history chart">
-      <rect x="0" y="0" width="${width}" height="${height}" fill="#f8faf7"></rect>
-      <polyline points="${coords.join(" ")}" fill="none" stroke="#236b5a" stroke-width="3"></polyline>
-      <text x="${padding}" y="${padding}" fill="#6a746c" font-size="12">${money(max, currency)}</text>
-      <text x="${padding}" y="${height - 6}" fill="#6a746c" font-size="12">${money(min, currency)}</text>
+      <rect x="0" y="0" width="${width}" height="${height}" fill="#f4f9ff"></rect>
+      <polyline points="${coords.join(" ")}" fill="none" stroke="#2f6fae" stroke-width="3"></polyline>
+      <text x="${padding}" y="${padding}" fill="#60758f" font-size="12">${money(max, currency)}</text>
+      <text x="${padding}" y="${height - 6}" fill="#60758F" font-size="12">${money(min, currency)}</text>
     </svg>
   `;
 }

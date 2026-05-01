@@ -10,6 +10,7 @@ data
 dist
 build
 *.egg-info
+*.tar
 .venv
 venv
 *.pem

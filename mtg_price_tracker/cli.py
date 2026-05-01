@@ -6,8 +6,8 @@ import sys
 from decimal import Decimal
 from pathlib import Path
 
+from .importer import import_cards
 from .parser import parse_card_file
-from .scryfall import ScryfallClient, ScryfallError
 from .storage import PriceStore, ReportRow
 
 
@@ -54,21 +54,11 @@ def main(argv: list[str] | None = None) -> int:
 
 def track(args: argparse.Namespace, store: PriceStore) -> int:
     requests = parse_card_file(args.cards)
-    client = ScryfallClient()
-    failures = 0
-
-    for card in requests:
-        try:
-            price = client.fetch_card_price(card, args.currency)
-        except (ScryfallError, KeyError, IndexError) as exc:
-            print(f"ERROR {card.name}: {exc}", file=sys.stderr)
-            failures += 1
-            continue
-        store.save_snapshot(card, price)
-        shown_price = f"{price.price} {price.currency}" if price.price is not None else f"n/a {price.currency}"
-        print(f"tracked {card.quantity}x {price.name} [{price.set_code}] {shown_price}")
-
-    return 1 if failures else 0
+    result = import_cards(requests, store, args.currency)
+    for failure in result.failures:
+        print(f"ERROR {failure.name}: {failure.error}", file=sys.stderr)
+    print(f"tracked {result.imported} cards")
+    return 1 if result.failures else 0
 
 
 def report(args: argparse.Namespace, store: PriceStore) -> int:

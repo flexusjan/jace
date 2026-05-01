@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Jace the Price Tracker</title>
+    <title>Jace, the Price Tracker</title>
     <link rel="stylesheet" href="/app.css">
   </head>
   <body>
@@ -11,7 +11,7 @@
       <header class="topbar">
         <div>
           <p class="eyebrow">Magic: The Gathering</p>
-          <h1>Jace the Price Tracker</h1>
+          <h1>Jace, the Price Tracker</h1>
         </div>
         <div class="summary" aria-live="polite">
           <span id="card-count">0 cards</span>
@@ -24,7 +24,60 @@
           <span>Search</span>
           <input id="search" type="search" autocomplete="off" placeholder="Card name or set">
         </label>
-        <button id="refresh" type="button">Refresh</button>
+        <div class="refresh-status" aria-live="polite">
+          <span id="refresh-state">Prices idle</span>
+          <small id="refresh-times">Last check n/a · Next check n/a</small>
+        </div>
+        <div class="selection-actions" aria-live="polite">
+          <span id="selection-count">0 selected</span>
+          <button id="delete-selected" class="danger" type="button" disabled>Delete</button>
+        </div>
+        <div class="toolbar-actions">
+          <button id="price-refresh" type="button">Update Prices</button>
+          <button id="refresh" type="button">Reload</button>
+        </div>
+      </section>
+
+      <section class="import-panel" aria-label="Add cards">
+        <div class="import-tabs" role="tablist" aria-label="Import source">
+          <button class="tab active" type="button" data-import-tab="single">Single</button>
+          <button class="tab" type="button" data-import-tab="file">File</button>
+          <button class="tab" type="button" data-import-tab="moxfield">Moxfield</button>
+        </div>
+        <form id="import-form" class="import-form">
+          <div class="import-fields" data-import-panel="single">
+            <label>
+              <span>Card</span>
+              <input id="single-card" type="text" autocomplete="off" placeholder="2 Lightning Bolt (SLD) 675">
+            </label>
+          </div>
+          <div class="import-fields hidden" data-import-panel="file">
+            <label>
+              <span>.txt or .csv file</span>
+              <input id="card-file" type="file" accept=".txt,.csv,text/plain,text/csv">
+            </label>
+          </div>
+          <div class="import-fields hidden" data-import-panel="moxfield">
+            <label>
+              <span>Moxfield URL</span>
+              <input id="moxfield-url" type="url" autocomplete="off" placeholder="https://www.moxfield.com/decks/...">
+            </label>
+          </div>
+          <label class="currency">
+            <span>Currency</span>
+            <select id="currency">
+              <option value="eur">EUR</option>
+              <option value="usd">USD</option>
+              <option value="tix">TIX</option>
+            </select>
+          </label>
+          <button id="import-submit" type="submit">Add</button>
+        </form>
+        <div class="progress hidden" id="import-progress" aria-hidden="true">
+          <div class="progress-bar" id="import-progress-bar"></div>
+        </div>
+        <p id="import-status" class="import-status" aria-live="polite"></p>
+        <div id="import-results" class="import-results"></div>
       </section>
 
       <section class="layout">
@@ -32,12 +85,17 @@
           <table>
             <thead>
               <tr>
-                <th>Card</th>
-                <th>Set</th>
-                <th>Qty</th>
-                <th>Latest</th>
-                <th>Change</th>
-                <th>Captured</th>
+                <th class="select-column">
+                  <input id="select-all" type="checkbox" aria-label="Select all visible cards">
+                </th>
+                <th><button class="sort-button" type="button" data-sort="name">Card</button></th>
+                <th><button class="sort-button" type="button" data-sort="set">Set</button></th>
+                <th><button class="sort-button" type="button" data-sort="quantity">Qty</button></th>
+                <th><button class="sort-button" type="button" data-sort="condition">Condition</button></th>
+                <th><button class="sort-button" type="button" data-sort="language">Language</button></th>
+                <th><button class="sort-button" type="button" data-sort="latest_price">Latest</button></th>
+                <th><button class="sort-button" type="button" data-sort="change">Change</button></th>
+                <th><button class="sort-button" type="button" data-sort="latest_captured_at">Captured</button></th>
               </tr>
             </thead>
             <tbody id="cards"></tbody>

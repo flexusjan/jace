@@ -10,6 +10,7 @@ class FakeCursor:
     def __init__(self, rows=None):
         self.rows = rows or []
         self.statements = []
+        self.rowcount = 0
 
     def __enter__(self):
         return self
@@ -19,6 +20,10 @@ class FakeCursor:
 
     def execute(self, statement, parameters=None):
         self.statements.append((statement, parameters))
+        if "DELETE FROM cards" in statement and parameters:
+            self.rowcount = len(parameters[0])
+        if "COUNT(DISTINCT" in statement:
+            self.rows = [{"deleted": len(parameters[0])}]
 
     def fetchall(self):
         return self.rows
@@ -72,20 +77,31 @@ class StorageTest(unittest.TestCase):
         self.assertIn("CREATE TABLE IF NOT EXISTS cards", statements[0][0])
         self.assertIn("CREATE TABLE IF NOT EXISTS price_snapshots", statements[1][0])
         self.assertIn("CREATE INDEX IF NOT EXISTS idx_price_snapshots_card_time", statements[2][0])
-        self.assertIn("INSERT INTO cards", statements[3][0])
-        self.assertIn("INSERT INTO price_snapshots", statements[4][0])
-        self.assertEqual(statements[4][1][2], 2)
+        self.assertTrue(any("ALTER TABLE cards ADD COLUMN IF NOT EXISTS image_url" in statement for statement, _ in statements))
+        insert_cards = next(statement for statement in statements if "INSERT INTO cards" in statement[0])
+        insert_snapshots = next(statement for statement in statements if "INSERT INTO price_snapshots" in statement[0])
+        self.assertIsNotNone(insert_cards)
+        self.assertIsInstance(insert_snapshots[1][0], str)
+        self.assertEqual(insert_snapshots[1][3], 2)
+        self.assertEqual(insert_snapshots[1][4], "NM")
+        self.assertEqual(insert_snapshots[1][5], "English")
         self.assertEqual(connection.commits, 2)
         self.assertEqual(connection.rollbacks, 0)
         self.assertTrue(connection.closed)
 
     def test_row_to_report_converts_decimal_values(self):
         row = {
+            "id": "entry-1",
+            "scryfall_id": "card-1",
             "name": "Lightning Bolt",
             "set_code": "sld",
             "collector_number": "675",
             "source_url": "https://scryfall.com/card/sld/675",
+            "has_cached_image": False,
+            "has_image_url": True,
             "quantity": 2,
+            "condition": "NM",
+            "language": "English",
             "currency": "EUR",
             "latest_price": "2.25",
             "latest_captured_at": datetime(2026, 2, 1, tzinfo=timezone.utc),
@@ -96,13 +112,104 @@ class StorageTest(unittest.TestCase):
         report = row_to_report(row)
 
         self.assertEqual(report.name, "Lightning Bolt")
+        self.assertEqual(report.scryfall_id, "card-1")
+        self.assertTrue(report.has_image_url)
         self.assertEqual(report.quantity, 2)
+        self.assertEqual(report.condition, "NM")
+        self.assertEqual(report.language, "English")
         self.assertEqual(report.latest_price, Decimal("2.25"))
         self.assertEqual(report.first_price, Decimal("1.50"))
 
     def test_decimal_or_none_handles_database_nulls(self):
         self.assertIsNone(decimal_or_none(None))
         self.assertEqual(decimal_or_none(Decimal("3.10")), Decimal("3.10"))
+
+    def test_delete_cards_removes_snapshots_then_cards(self):
+        connection = FakeConnection()
+        store = PriceStore(connection=connection)
+
+        deleted = store.delete_cards(["card-1", "card-2"])
+
+        statements = connection.cursor_instance.statements
+        self.assertIn("DELETE FROM price_snapshots", statements[-2][0])
+        self.assertIn("DELETE FROM cards", statements[-1][0])
+        self.assertEqual(statements[-1][1][0], ["card-1", "card-2"])
+        self.assertEqual(deleted, 2)
+        self.assertEqual(connection.commits, 2)
+
+    def test_history_rows_are_keyed_by_entry_id(self):
+        connection = FakeConnection(
+            [
+                {
+                    "entry_id": "entry-1",
+                    "captured_at": datetime(2026, 2, 1, tzinfo=timezone.utc),
+                    "price": "0.25",
+                    "currency": "EUR",
+                },
+                {
+                    "entry_id": "entry-2",
+                    "captured_at": datetime(2026, 2, 1, tzinfo=timezone.utc),
+                    "price": "0.75",
+                    "currency": "EUR",
+                },
+            ]
+        )
+        store = PriceStore(connection=connection)
+
+        history = store.history_rows()
+
+        statement = connection.cursor_instance.statements[-1][0]
+        self.assertIn("ps.entry_id", statement)
+        self.assertEqual(history["entry-1"][0].price, Decimal("0.25"))
+        self.assertEqual(history["entry-2"][0].price, Decimal("0.75"))
+
+    def test_delete_tracked_cards_removes_only_selected_tracking_entries(self):
+        connection = FakeConnection()
+        store = PriceStore(connection=connection)
+
+        deleted = store.delete_tracked_cards(["entry-1"])
+
+        statements = connection.cursor_instance.statements
+        self.assertIn("COUNT(DISTINCT", statements[-3][0])
+        self.assertIn("DELETE FROM price_snapshots", statements[-2][0])
+        self.assertIn("NOT EXISTS", statements[-1][0])
+        self.assertEqual(statements[-2][1][0], ["entry-1"])
+        self.assertEqual(deleted, 1)
+        self.assertEqual(connection.commits, 2)
+
+    def test_stale_tracked_cards_returns_latest_snapshot_requests(self):
+        captured_at = datetime(2026, 2, 1, tzinfo=timezone.utc)
+        connection = FakeConnection(
+            [
+                {
+                    "id": "entry-1",
+                    "scryfall_id": "card-1",
+                    "name": "Sol Ring",
+                    "set_code": "ltc",
+                    "collector_number": "314",
+                    "tracked_name": "Sol Ring",
+                    "quantity": 2,
+                    "condition": "LP",
+                    "language": "German",
+                    "currency": "EUR",
+                    "latest_captured_at": captured_at,
+                }
+            ]
+        )
+        store = PriceStore(connection=connection)
+
+        cards = store.stale_tracked_cards(datetime(2026, 2, 2, tzinfo=timezone.utc))
+
+        statement, parameters = connection.cursor_instance.statements[-1]
+        self.assertIn("DISTINCT ON (entry_id)", statement)
+        self.assertIn("latest.captured_at < %s", statement)
+        self.assertEqual(parameters[0], datetime(2026, 2, 2, tzinfo=timezone.utc))
+        self.assertEqual(cards[0].id, "entry-1")
+        self.assertEqual(cards[0].scryfall_id, "card-1")
+        self.assertEqual(cards[0].request.quantity, 2)
+        self.assertEqual(cards[0].request.condition, "LP")
+        self.assertEqual(cards[0].request.language, "German")
+        self.assertEqual(cards[0].currency, "eur")
 
 
 if __name__ == "__main__":

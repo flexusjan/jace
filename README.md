@@ -1,4 +1,4 @@
-# Jace the Price Tracker
+# Jace, the Price Tracker
 
 Ein kleines Tool, das eine Liste von Magic: The Gathering Karten einliest,
 aktuelle Preise über die öffentliche Scryfall-API abruft und Snapshots in
@@ -40,6 +40,17 @@ Frontend:
 http://localhost:8000
 ```
 
+Im Frontend kannst du Karten hinzufügen, suchen, sortieren, auswählen und
+inklusive Preisverlauf wieder löschen. Unterstützt werden einzelne Kartenzeilen,
+`.txt`-Dateien im gleichen Format wie [examples/cards.txt](examples/cards.txt),
+CSV-Dateien mit Spalten wie `Count`, `Name`, `Edition`, `Collector Number`,
+`Condition` und `Language` sowie Moxfield-Decklinks. Das Frontend zeigt
+Scryfall-Artworks an und cached sie in Postgres.
+
+Der Webserver aktualisiert Preise automatisch etwa einmal pro Stunde für stale
+Einträge. Über `Update Prices` im Frontend kann ein vollständiger Refresh auch
+manuell gestartet werden.
+
 Preise als einmaligen Job abrufen:
 
 ```bash
@@ -65,14 +76,16 @@ Datenbank erreichbar sein und `DATABASE_URL` auf diese Datenbank zeigen:
 
 ```bash
 docker run --rm \
+  --add-host=host.docker.internal:host-gateway \
   -e DATABASE_URL='postgresql://mtg_tracker:password@host.docker.internal:5432/mtg_prices' \
   -p 8000:8000 \
   jace-the-price-tracker:local
 ```
 
-Unter Linux funktioniert `host.docker.internal` je nach Docker-Version nicht
-automatisch. In dem Fall ist Docker Compose meistens der einfachere Weg, weil
-die Datenbank dort als Service `db` im gleichen Docker-Netzwerk läuft.
+`--add-host=host.docker.internal:host-gateway` macht den Host-Rechner unter
+Linux aus dem Container erreichbar. Docker Compose ist trotzdem meistens der
+einfachere Weg, weil die Datenbank dort als Service `db` im gleichen
+Docker-Netzwerk läuft.
 
 ## Lokal ausführen
 
@@ -84,6 +97,12 @@ export DATABASE_URL='postgresql://mtg_tracker@localhost:5432/mtg_prices'
 mtg-price-tracker track examples/cards.txt --currency eur
 mtg-price-tracker report
 mtg-price-tracker web --host 127.0.0.1 --port 8000
+```
+
+CLI-Ausgabe als CSV:
+
+```bash
+mtg-price-tracker report --format csv
 ```
 
 ## Tests

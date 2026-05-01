@@ -3,17 +3,24 @@ from decimal import Decimal
 import unittest
 
 from mtg_price_tracker.storage import HistoryPoint, ReportRow
-from mtg_price_tracker.web import cards_payload
+from mtg_price_tracker.web import cards_payload, import_payload, import_requests_from_payload
+from mtg_price_tracker.importer import ImportFailure, ImportResult
 
 
 class WebPayloadTest(unittest.TestCase):
     def test_cards_payload_includes_change_and_history(self):
         row = ReportRow(
+            id="entry-1",
+            scryfall_id="card-1",
             name="Sol Ring",
             set_code="soc",
             collector_number="128",
             source_url="https://scryfall.com/card/soc/128",
+            has_cached_image=False,
+            has_image_url=True,
             quantity=1,
+            condition="NM",
+            language="English",
             currency="EUR",
             latest_price=Decimal("0.72"),
             latest_captured_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
@@ -21,7 +28,7 @@ class WebPayloadTest(unittest.TestCase):
             first_captured_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         )
         history = {
-            "Sol Ring": [
+            "entry-1": [
                 HistoryPoint(
                     captured_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
                     price=Decimal("0.50"),
@@ -38,8 +45,94 @@ class WebPayloadTest(unittest.TestCase):
         payload = cards_payload([row], history)
 
         self.assertEqual(payload["cards"][0]["name"], "Sol Ring")
+        self.assertEqual(payload["cards"][0]["scryfall_id"], "card-1")
+        self.assertTrue(payload["cards"][0]["has_image_url"])
         self.assertEqual(payload["cards"][0]["change"], "0.22")
         self.assertEqual(len(payload["cards"][0]["history"]), 2)
+
+    def test_cards_payload_keys_history_by_scryfall_id(self):
+        rows = [
+            ReportRow(
+                id="entry-1",
+                scryfall_id="card-1",
+                name="Counterspell",
+                set_code="clu",
+                collector_number="84",
+                source_url="https://scryfall.com/card/clu/84",
+                has_cached_image=False,
+                has_image_url=False,
+                quantity=1,
+                condition="NM",
+                language="English",
+                currency="EUR",
+                latest_price=Decimal("0.25"),
+                latest_captured_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
+                first_price=Decimal("0.25"),
+                first_captured_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
+            ),
+            ReportRow(
+                id="entry-2",
+                scryfall_id="card-2",
+                name="Counterspell",
+                set_code="dmr",
+                collector_number="45",
+                source_url="https://scryfall.com/card/dmr/45",
+                has_cached_image=False,
+                has_image_url=False,
+                quantity=1,
+                condition="NM",
+                language="English",
+                currency="EUR",
+                latest_price=Decimal("0.75"),
+                latest_captured_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
+                first_price=Decimal("0.75"),
+                first_captured_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
+            ),
+        ]
+        history = {
+            "entry-1": [HistoryPoint(datetime(2026, 2, 1, tzinfo=timezone.utc), Decimal("0.25"), "EUR")],
+            "entry-2": [HistoryPoint(datetime(2026, 2, 1, tzinfo=timezone.utc), Decimal("0.75"), "EUR")],
+        }
+
+        payload = cards_payload(rows, history)
+
+        self.assertEqual(payload["cards"][0]["history"][0]["price"], "0.25")
+        self.assertEqual(payload["cards"][1]["history"][0]["price"], "0.75")
+
+    def test_import_requests_from_text_payload(self):
+        requests = import_requests_from_payload({"source": "text", "text": "2 Sol Ring [LTC]"})
+
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(requests[0].quantity, 2)
+        self.assertEqual(requests[0].name, "Sol Ring")
+        self.assertEqual(requests[0].set_code, "ltc")
+
+    def test_import_requests_from_csv_payload(self):
+        requests = import_requests_from_payload(
+            {
+                "source": "csv",
+                "text": '"Count","Name","Edition","Collector Number"\n"3","Counterspell","clu","84"\n',
+            }
+        )
+
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(requests[0].quantity, 3)
+        self.assertEqual(requests[0].name, "Counterspell")
+        self.assertEqual(requests[0].set_code, "clu")
+        self.assertEqual(requests[0].collector_number, "84")
+        self.assertEqual(requests[0].condition, "NM")
+        self.assertEqual(requests[0].language, "English")
+
+    def test_import_payload_includes_failures(self):
+        payload = import_payload(
+            ImportResult(total=2, processed=2, imported=1, failures=[ImportFailure("Bad Card", "not found")])
+        )
+
+        self.assertEqual(payload["total"], 2)
+        self.assertEqual(payload["processed"], 2)
+        self.assertEqual(payload["imported"], 1)
+        self.assertEqual(payload["failed"], 1)
+        self.assertEqual(payload["failures"][0]["name"], "Bad Card")
 
 
 if __name__ == "__main__":
