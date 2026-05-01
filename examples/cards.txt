@@ -1,0 +1,7 @@
+# Supported formats:
+# Card Name
+# Quantity Card Name (SET) CollectorNumber
+# Card Name [SET]
+1 Sol Ring
+2 Lightning Bolt (SLD) 675
+Black Lotus [LEA]
