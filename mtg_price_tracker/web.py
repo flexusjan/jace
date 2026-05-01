@@ -14,6 +14,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import unquote, urlparse
 from urllib.request import Request, urlopen
 
+from .config import SUPPORTED_CURRENCIES, app_config
 from .importer import ImportResult, import_cards
 from .models import CardRequest
 from .moxfield import MoxfieldClient, MoxfieldError
@@ -87,8 +88,8 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
             if not requests:
                 self._send_json({"error": "No cards found in import input"}, HTTPStatus.BAD_REQUEST)
                 return
-            currency = str(payload.get("currency") or "eur").lower()
-            if currency not in {"eur", "usd", "tix"}:
+            currency = str(payload.get("currency") or app_config().default_currency).lower()
+            if currency not in SUPPORTED_CURRENCIES:
                 self._send_json({"error": "Currency must be eur, usd, or tix"}, HTTPStatus.BAD_REQUEST)
                 return
             job = self.jobs.create(requests, currency, self.store.database_url)
@@ -195,9 +196,10 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
 
 
 def serve(host: str, port: int, database_url: str | None) -> int:
+    config = app_config()
     store = PriceStore(database_url)
     jobs = ImportJobs()
-    refresher = PriceRefreshScheduler(store.database_url)
+    refresher = PriceRefreshScheduler(store.database_url, interval_seconds=config.refresh_interval_seconds)
     refresher.start()
     handler = type("ConfiguredPriceTrackerHandler", (PriceTrackerHandler,), {"store": store, "jobs": jobs, "refresher": refresher})
     server = ThreadingHTTPServer((host, port), handler)
@@ -369,9 +371,10 @@ class ImageFetchError(RuntimeError):
 
 
 def fetch_image(url: str) -> tuple[str, bytes]:
+    config = app_config()
     request = Request(url, headers={"User-Agent": "jace-the-price-tracker/0.1.0", "Accept": "image/*"})
     try:
-        with urlopen(request, timeout=20.0) as response:
+        with urlopen(request, timeout=config.image_fetch_timeout_seconds) as response:
             content_type = response.headers.get_content_type() or "image/jpeg"
             return content_type, response.read()
     except HTTPError as exc:

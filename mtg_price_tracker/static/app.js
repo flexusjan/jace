@@ -60,6 +60,8 @@ const search = document.querySelector("#search");
 const priceRefresh = document.querySelector("#price-refresh");
 const refreshState = document.querySelector("#refresh-state");
 const refreshTimes = document.querySelector("#refresh-times");
+const refreshProgress = document.querySelector("#refresh-progress");
+const refreshProgressBar = document.querySelector("#refresh-progress-bar");
 const cardCount = document.querySelector("#card-count");
 const portfolioValue = document.querySelector("#portfolio-value");
 const importForm = document.querySelector("#import-form");
@@ -197,18 +199,41 @@ async function pollPriceRefresh() {
 
 function renderRefreshStatus(status) {
   priceRefresh.disabled = Boolean(status.running);
+  const total = Number(status.total || 0);
+  const processed = Number(status.processed || 0);
   if (status.running) {
-    refreshState.textContent = "Updating prices...";
+    const refreshed = Number(status.refreshed || 0);
+    const failed = Number(status.failed || 0);
+    refreshState.textContent = total > 0
+      ? `Updating prices ${processed}/${total}, ${refreshed} refreshed, ${failed} failed`
+      : "Preparing price update...";
   } else if (status.error) {
     refreshState.textContent = "Last price update failed";
   } else {
     const refreshed = Number(status.refreshed || 0);
-    refreshState.textContent = status.last_finished_at ? `Last update refreshed ${refreshed} cards` : "Prices idle";
+    const failed = Number(status.failed || 0);
+    const failures = failed ? `, ${failed} failed` : "";
+    refreshState.textContent = status.last_finished_at ? `Last update refreshed ${refreshed} cards${failures}` : "Prices idle";
   }
 
   const last = status.last_finished_at ? formatDate(status.last_finished_at) : "n/a";
   const next = status.next_run_at ? formatDate(status.next_run_at) : (status.running ? "after current update" : "n/a");
   refreshTimes.textContent = `Last check ${last} · Next check ${next}`;
+  renderRefreshProgress(status.running, total, processed);
+}
+
+function renderRefreshProgress(running, total, processed) {
+  if (!running) {
+    refreshProgress.classList.add("hidden");
+    refreshProgress.setAttribute("aria-hidden", "true");
+    refreshProgressBar.style.width = "0%";
+    return;
+  }
+
+  refreshProgress.classList.remove("hidden");
+  refreshProgress.setAttribute("aria-hidden", "false");
+  const percent = total > 0 ? Math.round((processed / total) * 100) : 5;
+  refreshProgressBar.style.width = `${Math.min(Math.max(percent, 5), 100)}%`;
 }
 
 function setImportTab(name) {
@@ -332,8 +357,11 @@ function renderImportProgress(job) {
   importProgress.classList.remove("hidden");
   importProgress.setAttribute("aria-hidden", "false");
   importProgressBar.style.width = `${Math.min(percent, 100)}%`;
-  const current = job.current_card && processed < total ? `, working on ${job.current_card}` : "";
-  importStatus.textContent = `${processed}/${total} processed, ${imported} imported, ${failed} failed${current}`;
+  const bulk = job.status === "running" && total > 1 && processed < total
+    ? `, processing bulk ${Math.min(processed + 1, total)} of ${total}`
+    : "";
+  const current = job.current_card && total === 1 && processed < total ? `, working on ${job.current_card}` : "";
+  importStatus.textContent = `${processed}/${total} processed, ${imported} imported, ${failed} failed${bulk}${current}`;
 }
 
 function resetProgress() {

@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 import unittest
 
+from mtg_price_tracker.refresher import RefreshStatus, refresh_status_payload
 from mtg_price_tracker.storage import HistoryPoint, ReportRow
 from mtg_price_tracker.web import card_history_payload, cards_payload, import_payload, import_requests_from_payload
 from mtg_price_tracker.importer import ImportFailure, ImportResult
@@ -170,6 +171,17 @@ class WebPayloadTest(unittest.TestCase):
         self.assertEqual(payload["imported"], 1)
         self.assertEqual(payload["failed"], 1)
         self.assertEqual(payload["failures"][0]["name"], "Bad Card")
+
+    def test_refresh_status_payload_includes_progress(self):
+        payload = refresh_status_payload(
+            RefreshStatus(running=True, total=3, processed=2, refreshed=1, failed=1),
+            interval_seconds=3600,
+        )
+
+        self.assertEqual(payload["total"], 3)
+        self.assertEqual(payload["processed"], 2)
+        self.assertEqual(payload["refreshed"], 1)
+        self.assertEqual(payload["failed"], 1)
 
 
 if __name__ == "__main__":

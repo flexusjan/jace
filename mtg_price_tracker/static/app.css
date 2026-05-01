@@ -273,6 +273,12 @@ button:disabled {
   font-weight: 600;
 }
 
+.refresh-progress {
+  min-width: 220px;
+  height: 7px;
+  margin-top: 2px;
+}
+
 .selection-actions span {
   height: 42px;
   padding: 10px 12px;

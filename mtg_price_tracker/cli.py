@@ -6,12 +6,14 @@ import sys
 from decimal import Decimal
 from pathlib import Path
 
+from .config import SUPPORTED_CURRENCIES, app_config
 from .importer import import_cards
 from .parser import parse_card_file
 from .storage import PriceStore, ReportRow
 
 
 def build_parser() -> argparse.ArgumentParser:
+    config = app_config()
     parser = argparse.ArgumentParser(prog="mtg-price-tracker")
     parser.add_argument("--database-url", help="Postgres connection URL. Defaults to DATABASE_URL.")
 
@@ -20,7 +22,7 @@ def build_parser() -> argparse.ArgumentParser:
     track = subparsers.add_parser("track", help="Fetch current prices and store a snapshot")
     track.add_argument("--database-url", default=argparse.SUPPRESS, help="Postgres connection URL")
     track.add_argument("cards", type=Path, help="Text file with card names")
-    track.add_argument("--currency", default="eur", choices=["eur", "usd", "tix"], help="Scryfall price currency")
+    track.add_argument("--currency", default=config.default_currency, choices=sorted(SUPPORTED_CURRENCIES), help="Scryfall price currency")
 
     report = subparsers.add_parser("report", help="Print latest prices and change since first snapshot")
     report.add_argument("--database-url", default=argparse.SUPPRESS, help="Postgres connection URL")
@@ -28,8 +30,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     web = subparsers.add_parser("web", help="Start the browser frontend")
     web.add_argument("--database-url", default=argparse.SUPPRESS, help="Postgres connection URL")
-    web.add_argument("--host", default="0.0.0.0", help="Bind host")
-    web.add_argument("--port", type=int, default=8000, help="Bind port")
+    web.add_argument("--host", default=config.web_host, help="Bind host")
+    web.add_argument("--port", type=int, default=config.web_port, help="Bind port")
 
     return parser
 

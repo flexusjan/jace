@@ -1,13 +1,12 @@
 # Jace, the Price Tracker
 
-Ein kleines Tool, das eine Liste von Magic: The Gathering Karten einliest,
-aktuelle Preise über die öffentliche Scryfall-API abruft und Snapshots in
-Postgres speichert. Die Preisentwicklung kann im Terminal und im Browser
-angezeigt werden.
+A small tool that reads a list of Magic: The Gathering cards, fetches current
+prices from the public Scryfall API, and stores snapshots in Postgres. Price
+history can be viewed from the terminal or in the browser.
 
-## Kartenliste
+## Card List
 
-Unterstützte Formate:
+Supported formats:
 
 ```text
 Card Name
@@ -15,34 +14,49 @@ Card Name
 Card Name [SET]
 ```
 
-Beispiel: [examples/cards.txt](examples/cards.txt)
+Example: [examples/cards.txt](examples/cards.txt)
 
 ## Docker Compose / Portainer
 
-Lege lokal eine `.env` an. Die Datei wird von Git ignoriert.
+Create a local `.env` file. This file is ignored by Git.
 
 ```bash
 cp .env.example .env
 ```
 
-Setze in `.env` ein eigenes `POSTGRES_PASSWORD`. Danach:
+Set your own `POSTGRES_PASSWORD` in `.env`, then start the stack:
 
 ```bash
 docker compose up -d
 ```
 
-Der Stack startet genau zwei Container:
+The stack starts exactly two containers:
 
-- `jace-postgres` mit Postgres
-- `jace` mit der Web-App
+- `jace-postgres` with Postgres
+- `jace` with the web app
 
-Für Portainer wird kein lokaler Build benötigt. Der App-Container verwendet
-das Image aus `JACE_IMAGE`. Setze dort den vollständigen Namen des Images, das
-Portainer deployen soll, zum Beispiel `registry.example.com/jace-the-price-tracker:latest`.
+Portainer does not need a local build. The app container uses the image from
+`JACE_IMAGE`. Set it to the full image name that Portainer should deploy, for
+example `registry.example.com/jace-the-price-tracker:latest`.
 
-Der Postgres-Container nutzt standardmäßig `postgres:18-alpine`. Das Compose-
-Volume wird dafür auf `/var/lib/postgresql` gemountet, damit die
-Datenverzeichnis-Struktur der offiziellen Postgres-18-Images passt.
+The Postgres container uses `postgres:18-alpine` by default. The Compose volume
+is mounted at `/var/lib/postgresql` so it matches the data directory layout used
+by the official Postgres 18 images.
+
+Runtime settings can be overridden in `.env`:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `APP_PORT` | `8000` | Host port exposed by Docker Compose |
+| `JACE_DEFAULT_CURRENCY` | `eur` | Default import currency (`eur`, `usd`, or `tix`) |
+| `JACE_WEB_HOST` | `0.0.0.0` | Web server bind host |
+| `JACE_WEB_PORT` | `8000` | Web server bind port inside the container |
+| `JACE_REFRESH_INTERVAL_SECONDS` | `3600` | Automatic stale price refresh interval |
+| `JACE_SCRYFALL_BULK_SIZE` | `75` | Scryfall collection request size, max `75` |
+| `JACE_SCRYFALL_REQUEST_INTERVAL_SECONDS` | `0.12` | Delay between regular Scryfall requests |
+| `JACE_SCRYFALL_COLLECTION_REQUEST_INTERVAL_SECONDS` | `0.55` | Delay between collection/bulk Scryfall requests |
+| `JACE_SCRYFALL_TIMEOUT_SECONDS` | `20` | Scryfall API request timeout |
+| `JACE_IMAGE_FETCH_TIMEOUT_SECONDS` | `20` | Card image fetch timeout |
 
 Frontend:
 
@@ -50,39 +64,39 @@ Frontend:
 http://localhost:8000
 ```
 
-Im Frontend kannst du Karten hinzufügen, suchen, sortieren, auswählen und
-inklusive Preisverlauf wieder löschen. Unterstützt werden einzelne Kartenzeilen,
-`.txt`-Dateien im gleichen Format wie [examples/cards.txt](examples/cards.txt),
-CSV-Dateien mit Spalten wie `Count`, `Name`, `Edition`, `Collector Number`,
-`Condition` und `Language` sowie Moxfield-Decklinks. Das Frontend zeigt
-Scryfall-Artworks an und cached sie in Postgres.
+In the frontend you can add, search, sort, select, and delete cards including
+their price history. Supported import sources are single card lines, `.txt`
+files in the same format as [examples/cards.txt](examples/cards.txt), CSV files
+with columns such as `Count`, `Name`, `Edition`, `Collector Number`,
+`Condition`, and `Language`, plus Moxfield deck links. The frontend displays
+Scryfall artwork and caches it in Postgres.
 
-Der Webserver aktualisiert Preise automatisch etwa einmal pro Stunde für stale
-Einträge. Über `Update Prices` im Frontend kann ein vollständiger Refresh auch
-manuell gestartet werden.
+The web server automatically refreshes prices for stale entries about once per
+hour. A full refresh can also be started manually with `Update Prices` in the
+frontend.
 
-Report im Terminal anzeigen:
+Show the terminal report:
 
 ```bash
 docker compose run --rm jace report
 ```
 
-## Container bauen
+## Build The Container
 
-Wenn Docker installiert ist, kannst du das Image auch ohne Docker Compose bauen:
+If Docker is installed, you can build the image without Docker Compose:
 
 ```bash
 docker build -t jace-the-price-tracker:local .
 ```
 
-Danach kannst du den Compose-Stack mit dem lokal gebauten Image starten:
+Then start the Compose stack with the locally built image:
 
 ```bash
 JACE_IMAGE=jace-the-price-tracker:local docker compose up -d
 ```
 
-Danach kann der Container direkt gestartet werden. Dafür muss eine Postgres-
-Datenbank erreichbar sein und `DATABASE_URL` auf diese Datenbank zeigen:
+The container can also be started directly. A Postgres database must be
+reachable and `DATABASE_URL` must point to it:
 
 ```bash
 docker run --rm \
@@ -92,14 +106,13 @@ docker run --rm \
   jace-the-price-tracker:local
 ```
 
-`--add-host=host.docker.internal:host-gateway` macht den Host-Rechner unter
-Linux aus dem Container erreichbar. Docker Compose ist trotzdem meistens der
-einfachere Weg, weil die Datenbank dort als Service `db` im gleichen
-Docker-Netzwerk läuft.
+`--add-host=host.docker.internal:host-gateway` makes the host machine reachable
+from the container on Linux. Docker Compose is usually simpler because the
+database runs as the `db` service in the same Docker network.
 
-## Lokal ausführen
+## Run Locally
 
-Postgres muss erreichbar sein und `DATABASE_URL` muss gesetzt sein.
+Postgres must be reachable and `DATABASE_URL` must be set.
 
 ```bash
 python -m pip install -e .
@@ -109,7 +122,7 @@ mtg-price-tracker report
 mtg-price-tracker web --host 127.0.0.1 --port 8000
 ```
 
-CLI-Ausgabe als CSV:
+CLI output as CSV:
 
 ```bash
 mtg-price-tracker report --format csv
@@ -121,10 +134,10 @@ mtg-price-tracker report --format csv
 python -m unittest discover -s tests
 ```
 
-## Hinweise
+## Notes
 
-- Datenquelle ist Scryfall. Preise können fehlen, wenn Scryfall für eine Karte
-  keine Preisdaten in der gewählten Währung liefert.
-- `track` benötigt Netzwerkzugriff.
-- Echte Passwörter gehören nur in lokale `.env`-Dateien oder Secret Stores,
-  nicht ins Repository.
+- The data source is Scryfall. Prices can be missing when Scryfall has no price
+  data for a card in the selected currency.
+- `track` requires network access.
+- Real passwords belong in local `.env` files or secret stores, not in the
+  repository.

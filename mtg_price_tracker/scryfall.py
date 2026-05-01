@@ -9,13 +9,21 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
+from .config import (
+    DEFAULT_SCRYFALL_BASE_URL,
+    DEFAULT_SCRYFALL_BULK_SIZE,
+    DEFAULT_SCRYFALL_COLLECTION_REQUEST_INTERVAL_SECONDS,
+    DEFAULT_SCRYFALL_REQUEST_INTERVAL_SECONDS,
+    DEFAULT_SCRYFALL_TIMEOUT_SECONDS,
+    app_config,
+)
 from .models import CardPrice, CardRequest
 
-BASE_URL = "https://api.scryfall.com"
 USER_AGENT = "jace-the-price-tracker/0.1.0"
-COLLECTION_BATCH_SIZE = 75
-DEFAULT_REQUEST_INTERVAL_SECONDS = 0.12
-COLLECTION_REQUEST_INTERVAL_SECONDS = 0.55
+BASE_URL = DEFAULT_SCRYFALL_BASE_URL
+COLLECTION_BATCH_SIZE = DEFAULT_SCRYFALL_BULK_SIZE
+DEFAULT_REQUEST_INTERVAL_SECONDS = DEFAULT_SCRYFALL_REQUEST_INTERVAL_SECONDS
+COLLECTION_REQUEST_INTERVAL_SECONDS = DEFAULT_SCRYFALL_COLLECTION_REQUEST_INTERVAL_SECONDS
 
 _RATE_LIMIT_LOCK = threading.Lock()
 _LAST_REQUEST_AT = 0.0
@@ -32,15 +40,20 @@ CardPriceResult = tuple[CardRequest, CardPrice | None, Exception | None]
 class ScryfallClient:
     def __init__(
         self,
-        base_url: str = BASE_URL,
-        timeout: float = 20.0,
-        pause_seconds: float = DEFAULT_REQUEST_INTERVAL_SECONDS,
-        collection_pause_seconds: float = COLLECTION_REQUEST_INTERVAL_SECONDS,
+        base_url: str | None = None,
+        timeout: float | None = None,
+        pause_seconds: float | None = None,
+        collection_pause_seconds: float | None = None,
+        collection_batch_size: int | None = None,
     ) -> None:
-        self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
-        self.pause_seconds = pause_seconds
-        self.collection_pause_seconds = collection_pause_seconds
+        config = app_config()
+        self.base_url = (base_url or config.scryfall_base_url).rstrip("/")
+        self.timeout = timeout if timeout is not None else config.scryfall_timeout_seconds
+        self.pause_seconds = pause_seconds if pause_seconds is not None else config.scryfall_request_interval_seconds
+        self.collection_pause_seconds = (
+            collection_pause_seconds if collection_pause_seconds is not None else config.scryfall_collection_request_interval_seconds
+        )
+        self.collection_batch_size = collection_batch_size if collection_batch_size is not None else config.scryfall_bulk_size
 
     def fetch_card_price(self, card: CardRequest, currency: str = "eur") -> CardPrice:
         data = self._get_card(card)
@@ -53,7 +66,7 @@ class ScryfallClient:
         return results
 
     def fetch_card_price_batches(self, cards: list[CardRequest], currency: str = "eur") -> Iterator[list[CardPriceResult]]:
-        for batch in chunks(cards, COLLECTION_BATCH_SIZE):
+        for batch in chunks(cards, self.collection_batch_size):
             batch_results: list[CardPriceResult] = []
             try:
                 data = match_collection_data(batch, self._get_card_collection(batch))
@@ -80,7 +93,7 @@ class ScryfallClient:
         currency: str = "eur",
     ) -> list[CardPriceResult]:
         results: list[CardPriceResult] = []
-        for batch in chunks(cards, COLLECTION_BATCH_SIZE):
+        for batch in chunks(cards, self.collection_batch_size):
             try:
                 response_data = self._request(
                     "/cards/collection",

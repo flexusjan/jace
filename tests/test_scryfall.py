@@ -1,8 +1,11 @@
 import unittest
+from unittest.mock import patch
 
 from mtg_price_tracker.models import CardRequest
 from mtg_price_tracker.scryfall import (
+    ScryfallClient,
     card_image_url,
+    chunks,
     collection_identifier,
     match_collection_data,
     match_collection_data_by_id,
@@ -71,6 +74,31 @@ class ScryfallTest(unittest.TestCase):
 
         self.assertIsNotNone(matched)
         self.assertEqual([card["id"] for card in matched], ["card-1", "card-2"])
+
+    def test_client_uses_environment_defaults(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "JACE_SCRYFALL_BASE_URL": "https://scryfall.example",
+                "JACE_SCRYFALL_BULK_SIZE": "12",
+                "JACE_SCRYFALL_REQUEST_INTERVAL_SECONDS": "0.3",
+                "JACE_SCRYFALL_COLLECTION_REQUEST_INTERVAL_SECONDS": "0.9",
+                "JACE_SCRYFALL_TIMEOUT_SECONDS": "7",
+            },
+            clear=False,
+        ):
+            client = ScryfallClient()
+
+        self.assertEqual(client.base_url, "https://scryfall.example")
+        self.assertEqual(client.collection_batch_size, 12)
+        self.assertEqual(client.pause_seconds, 0.3)
+        self.assertEqual(client.collection_pause_seconds, 0.9)
+        self.assertEqual(client.timeout, 7)
+
+    def test_chunks_uses_configured_size_from_client(self):
+        client = ScryfallClient(collection_batch_size=2)
+
+        self.assertEqual(chunks([1, 2, 3], client.collection_batch_size), [[1, 2], [3]])
 
 
 if __name__ == "__main__":
