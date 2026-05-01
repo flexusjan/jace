@@ -1,8 +1,44 @@
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mtg_prices}
+      POSTGRES_USER: ${POSTGRES_USER:-mtg_tracker}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in a local .env file}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   tracker:
     build: .
     image: jace-the-price-tracker:local
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-mtg_tracker}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-mtg_prices}
+    ports:
+      - "${APP_PORT:-8000}:8000"
     volumes:
-      - ./data:/app/data
       - ./examples:/app/examples:ro
-    command: ["track", "--db", "/app/data/prices.sqlite", "/app/examples/cards.txt", "--currency", "eur"]
+    command: ["web", "--host", "0.0.0.0", "--port", "8000"]
+
+  tracker-job:
+    build: .
+    image: jace-the-price-tracker:local
+    profiles: ["jobs"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-mtg_tracker}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-mtg_prices}
+    volumes:
+      - ./examples:/app/examples:ro
+    command: ["track", "/app/examples/cards.txt", "--currency", "${PRICE_CURRENCY:-eur}"]
+
+volumes:
+  postgres_data:

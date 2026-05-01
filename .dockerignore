@@ -1,10 +1,16 @@
 .git
+.env
+.env.*
 .pytest_cache
 __pycache__
 *.pyc
 data
+*.sqlite
+*.sqlite3
 dist
 build
 *.egg-info
 .venv
 venv
+*.pem
+*.key
