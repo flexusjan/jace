@@ -31,6 +31,9 @@ Setze in `.env` ein eigenes `POSTGRES_PASSWORD`. Danach:
 docker compose up --build
 ```
 
+Der Container wird dabei automatisch aus dem `Dockerfile` gebaut und unter dem
+lokalen Image-Namen `jace-the-price-tracker:local` verwendet.
+
 Frontend:
 
 ```text
@@ -48,6 +51,28 @@ Report im Terminal anzeigen:
 ```bash
 docker compose run --rm tracker report
 ```
+
+## Container bauen
+
+Wenn Docker installiert ist, kannst du das Image auch ohne Docker Compose bauen:
+
+```bash
+docker build -t jace-the-price-tracker:local .
+```
+
+Danach kann der Container direkt gestartet werden. Dafür muss eine Postgres-
+Datenbank erreichbar sein und `DATABASE_URL` auf diese Datenbank zeigen:
+
+```bash
+docker run --rm \
+  -e DATABASE_URL='postgresql://mtg_tracker:password@host.docker.internal:5432/mtg_prices' \
+  -p 8000:8000 \
+  jace-the-price-tracker:local
+```
+
+Unter Linux funktioniert `host.docker.internal` je nach Docker-Version nicht
+automatisch. In dem Fall ist Docker Compose meistens der einfachere Weg, weil
+die Datenbank dort als Service `db` im gleichen Docker-Netzwerk läuft.
 
 ## Lokal ausführen
 
