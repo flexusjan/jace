@@ -1,6 +1,6 @@
 services:
   db:
-    image: ${POSTGRES_IMAGE:-postgres:17-alpine}
+    image: ${POSTGRES_IMAGE:-postgres:18-alpine}
     container_name: jace-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-mtg_prices}
