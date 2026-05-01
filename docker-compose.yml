@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:18-alpine
+    container_name: jace-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-mtg_prices}
       POSTGRES_USER: ${POSTGRES_USER:-mtg_tracker}
@@ -13,9 +14,9 @@ services:
       timeout: 5s
       retries: 10
 
-  tracker:
-    build: .
-    image: jace-the-price-tracker:local
+  jace:
+    image: ${JACE_IMAGE:-ghcr.io/flexusjan/jace-the-price-tracker:latest}
+    container_name: jace
     depends_on:
       db:
         condition: service_healthy
@@ -23,22 +24,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-mtg_tracker}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-mtg_prices}
     ports:
       - "${APP_PORT:-8000}:8000"
-    volumes:
-      - ./examples:/app/examples:ro
     command: ["web", "--host", "0.0.0.0", "--port", "8000"]
-
-  tracker-job:
-    build: .
-    image: jace-the-price-tracker:local
-    profiles: ["jobs"]
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-mtg_tracker}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-mtg_prices}
-    volumes:
-      - ./examples:/app/examples:ro
-    command: ["track", "/app/examples/cards.txt", "--currency", "${PRICE_CURRENCY:-eur}"]
 
 volumes:
   postgres18_root:

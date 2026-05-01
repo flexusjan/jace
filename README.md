@@ -17,7 +17,7 @@ Card Name [SET]
 
 Beispiel: [examples/cards.txt](examples/cards.txt)
 
-## Docker Compose
+## Docker Compose / Portainer
 
 Lege lokal eine `.env` an. Die Datei wird von Git ignoriert.
 
@@ -28,11 +28,18 @@ cp .env.example .env
 Setze in `.env` ein eigenes `POSTGRES_PASSWORD`. Danach:
 
 ```bash
-docker compose up --build
+docker compose up -d
 ```
 
-Der Container wird dabei automatisch aus dem `Dockerfile` gebaut und unter dem
-lokalen Image-Namen `jace-the-price-tracker:local` verwendet.
+Der Stack startet genau zwei Container:
+
+- `jace-postgres` mit Postgres
+- `jace` mit der Web-App
+
+Für Portainer wird kein lokaler Build benötigt. Der App-Container verwendet
+standardmäßig `ghcr.io/flexusjan/jace-the-price-tracker:latest`. Du kannst das
+Image über `JACE_IMAGE` in `.env` überschreiben, falls du ein eigenes Registry-
+Image verwenden willst.
 
 Frontend:
 
@@ -51,16 +58,10 @@ Der Webserver aktualisiert Preise automatisch etwa einmal pro Stunde für stale
 Einträge. Über `Update Prices` im Frontend kann ein vollständiger Refresh auch
 manuell gestartet werden.
 
-Preise als einmaligen Job abrufen:
-
-```bash
-docker compose --profile jobs run --rm tracker-job
-```
-
 Report im Terminal anzeigen:
 
 ```bash
-docker compose run --rm tracker report
+docker compose run --rm jace report
 ```
 
 ## Container bauen
@@ -69,6 +70,12 @@ Wenn Docker installiert ist, kannst du das Image auch ohne Docker Compose bauen:
 
 ```bash
 docker build -t jace-the-price-tracker:local .
+```
+
+Danach kannst du den Compose-Stack mit dem lokal gebauten Image starten:
+
+```bash
+JACE_IMAGE=jace-the-price-tracker:local docker compose up -d
 ```
 
 Danach kann der Container direkt gestartet werden. Dafür muss eine Postgres-
