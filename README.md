@@ -37,9 +37,8 @@ Der Stack startet genau zwei Container:
 - `jace` mit der Web-App
 
 Für Portainer wird kein lokaler Build benötigt. Der App-Container verwendet
-standardmäßig `ghcr.io/flexusjan/jace-the-price-tracker:latest`. Du kannst das
-Image über `JACE_IMAGE` in `.env` überschreiben, falls du ein eigenes Registry-
-Image verwenden willst.
+das Image aus `JACE_IMAGE`. Setze dort den vollständigen Namen des Images, das
+Portainer deployen soll, zum Beispiel `registry.example.com/jace-the-price-tracker:latest`.
 
 Frontend:
 

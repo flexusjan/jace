@@ -15,7 +15,7 @@ services:
       retries: 10
 
   jace:
-    image: ${JACE_IMAGE:-ghcr.io/flexusjan/jace-the-price-tracker:latest}
+    image: ${JACE_IMAGE:?Set JACE_IMAGE to the image you want Portainer to deploy}
     container_name: jace
     depends_on:
       db:
