@@ -335,6 +335,28 @@ class PriceStore:
         self.connection.commit()
         return history
 
+    def history_rows_for_entry(self, entry_id: str) -> list[HistoryPoint]:
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT captured_at, price, currency
+                FROM price_snapshots
+                WHERE entry_id = %s
+                ORDER BY captured_at ASC, id ASC
+                """,
+                (entry_id,),
+            )
+            rows = [
+                HistoryPoint(
+                    captured_at=values["captured_at"],
+                    price=decimal_or_none(values["price"]),
+                    currency=values["currency"],
+                )
+                for values in (dict(row) for row in cursor.fetchall())
+            ]
+        self.connection.commit()
+        return rows
+
     def stale_tracked_cards(self, older_than: datetime) -> list[TrackedCard]:
         with self.connection.cursor() as cursor:
             cursor.execute(

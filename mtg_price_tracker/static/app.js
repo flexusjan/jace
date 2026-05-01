@@ -4,13 +4,59 @@ const state = {
   query: "",
   sortKey: "name",
   sortDirection: "asc",
-  selectedIds: new Set()
+  selectedIds: new Set(),
+  visibleColumns: new Set(),
+  histories: new Map(),
+  historyErrors: new Map(),
+  historyRequests: new Map(),
+  detailRenderKey: ""
 };
+
+const COLUMN_STORAGE_KEY = "jace.visibleColumns";
+const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "short"
+});
+const columns = [
+  {
+    key: "name",
+    className: "card-name",
+    render: card => escapeHtml(card.name)
+  },
+  {
+    key: "set",
+    render: card => `${escapeHtml(card.set_code.toUpperCase())} #${escapeHtml(card.collector_number)}`
+  },
+  {
+    key: "quantity",
+    render: card => String(card.quantity)
+  },
+  {
+    key: "condition",
+    render: card => escapeHtml(card.condition || "NM")
+  },
+  {
+    key: "language",
+    render: card => escapeHtml(card.language || "English")
+  },
+  {
+    key: "latest_price",
+    render: card => money(card.latest_price, card.currency)
+  },
+  {
+    key: "change",
+    className: card => changeClass(card),
+    render: card => signedMoney(card.change, card.currency)
+  },
+  {
+    key: "latest_captured_at",
+    render: card => formatDate(card.latest_captured_at)
+  }
+];
 
 const cardsBody = document.querySelector("#cards");
 const detail = document.querySelector("#detail");
 const search = document.querySelector("#search");
-const refresh = document.querySelector("#refresh");
 const priceRefresh = document.querySelector("#price-refresh");
 const refreshState = document.querySelector("#refresh-state");
 const refreshTimes = document.querySelector("#refresh-times");
@@ -29,12 +75,14 @@ const cardFile = document.querySelector("#card-file");
 const moxfieldUrl = document.querySelector("#moxfield-url");
 const currency = document.querySelector("#currency");
 const sortButtons = document.querySelectorAll("[data-sort]");
+const columnOptions = document.querySelector("#column-options");
+const columnToggles = document.querySelectorAll("#column-options input[type='checkbox']");
 const selectAll = document.querySelector("#select-all");
 const selectionCount = document.querySelector("#selection-count");
 const deleteSelected = document.querySelector("#delete-selected");
 const ACTIVE_IMPORT_JOB_KEY = "jace.activeImportJobId";
 
-refresh.addEventListener("click", loadCards);
+initializeColumns();
 priceRefresh.addEventListener("click", refreshPricesNow);
 search.addEventListener("input", event => {
   state.query = event.target.value.toLowerCase();
@@ -47,8 +95,30 @@ importForm.addEventListener("submit", submitImport);
 sortButtons.forEach(button => {
   button.addEventListener("click", () => setSort(button.dataset.sort));
 });
+columnOptions.addEventListener("change", updateVisibleColumns);
 selectAll.addEventListener("change", toggleVisibleSelection);
 deleteSelected.addEventListener("click", deleteSelectedCards);
+cardsBody.addEventListener("click", event => {
+  const checkbox = event.target.closest(".row-select");
+  if (checkbox) {
+    return;
+  }
+  const row = event.target.closest("tr");
+  if (!row) {
+    return;
+  }
+  state.selectedId = row.dataset.cardId;
+  updateSelectedRows();
+  renderDetail(state.cards.find(card => card.id === state.selectedId));
+});
+cardsBody.addEventListener("change", event => {
+  const checkbox = event.target.closest(".row-select");
+  if (!checkbox) {
+    return;
+  }
+  setCardSelection(checkbox.value, checkbox.checked);
+  updateSelectionControls(visibleSortedCards());
+});
 
 loadCards();
 loadRefreshStatus();
@@ -56,7 +126,6 @@ setInterval(loadRefreshStatus, 30000);
 resumeActiveImport();
 
 async function loadCards() {
-  refresh.disabled = true;
   try {
     const response = await fetch("/api/cards", { cache: "no-store" });
     if (!response.ok) {
@@ -64,6 +133,10 @@ async function loadCards() {
     }
     const payload = await response.json();
     state.cards = payload.cards;
+    state.histories.clear();
+    state.historyErrors.clear();
+    state.historyRequests.clear();
+    state.detailRenderKey = "";
     reconcileSelection();
     if (!state.selectedId && state.cards.length > 0) {
       state.selectedId = state.cards[0].id;
@@ -71,8 +144,6 @@ async function loadCards() {
     render();
   } catch (error) {
     detail.innerHTML = `<h2>Could not load prices</h2><p class="muted">${escapeHtml(error.message)}</p>`;
-  } finally {
-    refresh.disabled = false;
   }
 }
 
@@ -253,12 +324,10 @@ async function loadCardsAfterImport(job) {
 
 function renderImportProgress(job) {
   const total = Number(job.total || 0);
-  const started = Number(job.started || 0);
   const processed = Number(job.processed || 0);
   const imported = Number(job.imported || 0);
   const failed = Number(job.failed || 0);
-  const visibleProgress = Math.max(processed, started);
-  const percent = total > 0 ? Math.round((visibleProgress / total) * 100) : 0;
+  const percent = total > 0 ? Math.round((processed / total) * 100) : 0;
 
   importProgress.classList.remove("hidden");
   importProgress.setAttribute("aria-hidden", "false");
@@ -336,28 +405,12 @@ function clearImportInput(source) {
 }
 
 function render() {
-  const filtered = state.cards.filter(card => {
-    const haystack = `${card.name} ${card.set_code} ${card.collector_number}`.toLowerCase();
-    return haystack.includes(state.query);
-  });
-  const sorted = sortCards(filtered);
+  const sorted = visibleSortedCards();
 
   updateSortButtons();
+  updateColumnVisibility();
   updateSelectionControls(sorted);
-  cardsBody.innerHTML = sorted.map(card => rowTemplate(card)).join("");
-  cardsBody.querySelectorAll(".row-select").forEach(input => {
-    input.addEventListener("click", event => event.stopPropagation());
-    input.addEventListener("change", event => {
-      setCardSelection(event.target.value, event.target.checked);
-      render();
-    });
-  });
-  cardsBody.querySelectorAll("tr").forEach(row => {
-    row.addEventListener("click", () => {
-      state.selectedId = row.dataset.cardId;
-      render();
-    });
-  });
+  renderRows(sorted);
 
   const total = state.cards.reduce((sum, card) => {
     const price = Number(card.latest_price || 0);
@@ -445,6 +498,44 @@ async function deleteSelectedCards() {
   }
 }
 
+function initializeColumns() {
+  const saved = readSavedColumns();
+  const allowed = new Set(columns.map(column => column.key));
+  const initial = Array.isArray(saved) ? saved.filter(key => allowed.has(key)) : columns.map(column => column.key);
+  state.visibleColumns = new Set(initial.length > 0 ? initial : columns.map(column => column.key));
+  columnToggles.forEach(toggle => {
+    toggle.checked = state.visibleColumns.has(toggle.value);
+  });
+}
+
+function readSavedColumns() {
+  try {
+    return JSON.parse(localStorage.getItem(COLUMN_STORAGE_KEY) || "null");
+  } catch {
+    return null;
+  }
+}
+
+function updateVisibleColumns() {
+  const next = new Set(Array.from(columnToggles).filter(toggle => toggle.checked).map(toggle => toggle.value));
+  if (next.size === 0) {
+    const nameToggle = Array.from(columnToggles).find(toggle => toggle.value === "name");
+    if (nameToggle) {
+      nameToggle.checked = true;
+      next.add("name");
+    }
+  }
+  state.visibleColumns = next;
+  localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(Array.from(next)));
+  render();
+}
+
+function updateColumnVisibility() {
+  document.querySelectorAll("[data-column]").forEach(element => {
+    element.classList.toggle("column-hidden", !state.visibleColumns.has(element.dataset.column));
+  });
+}
+
 function setSort(key) {
   if (state.sortKey === key) {
     state.sortDirection = state.sortDirection === "asc" ? "desc" : "asc";
@@ -506,9 +597,17 @@ function updateSortButtons() {
   });
 }
 
+function renderRows(cards) {
+  cardsBody.innerHTML = cards.map(card => rowTemplate(card)).join("");
+}
+
+function updateSelectedRows() {
+  cardsBody.querySelectorAll("tr").forEach(row => {
+    row.classList.toggle("selected", row.dataset.cardId === state.selectedId);
+  });
+}
+
 function rowTemplate(card) {
-  const change = Number(card.change || 0);
-  const changeClass = change > 0 ? "gain" : change < 0 ? "loss" : "";
   const selected = card.id === state.selectedId ? "selected" : "";
   const checked = state.selectedIds.has(card.id) ? "checked" : "";
   return `
@@ -516,32 +615,50 @@ function rowTemplate(card) {
       <td class="select-column">
         <input class="row-select" type="checkbox" value="${escapeHtml(card.id)}" aria-label="Select ${escapeHtml(card.name)}" ${checked}>
       </td>
-      <td class="card-name">${escapeHtml(card.name)}</td>
-      <td>${escapeHtml(card.set_code.toUpperCase())} #${escapeHtml(card.collector_number)}</td>
-      <td>${card.quantity}</td>
-      <td>${escapeHtml(card.condition || "NM")}</td>
-      <td>${escapeHtml(card.language || "English")}</td>
-      <td>${money(card.latest_price, card.currency)}</td>
-      <td class="${changeClass}">${signedMoney(card.change, card.currency)}</td>
-      <td>${formatDate(card.latest_captured_at)}</td>
+      ${columns.map(column => columnTemplate(column, card)).join("")}
     </tr>
   `;
 }
 
+function columnTemplate(column, card) {
+  const hidden = state.visibleColumns.has(column.key) ? "" : " column-hidden";
+  const extraClass = typeof column.className === "function" ? column.className(card) : column.className || "";
+  return `<td class="${extraClass}${hidden}" data-column="${column.key}">${column.render(card)}</td>`;
+}
+
+function changeClass(card) {
+  const change = Number(card.change || 0);
+  return change > 0 ? "gain" : change < 0 ? "loss" : "";
+}
+
 function renderDetail(card) {
   if (!card) {
+    state.detailRenderKey = "empty";
     detail.innerHTML = `<h2>No cards tracked</h2><p class="muted">Run the tracker to create the first price snapshot.</p>`;
     return;
   }
 
-  const points = card.history.filter(point => point.price !== null);
+  const history = state.histories.get(card.id);
+  const error = state.historyErrors.get(card.id);
+  const loading = state.historyRequests.has(card.id);
+  const renderKey = `${card.id}:${error || (history ? history.length : loading ? "loading" : "missing")}`;
+  if (state.detailRenderKey === renderKey) {
+    return;
+  }
+  state.detailRenderKey = renderKey;
+
+  if (!history && !loading && !error) {
+    loadCardHistory(card.id);
+  }
+
+  const points = (history || []).filter(point => point.price !== null);
   detail.innerHTML = `
     ${cardImage(card)}
     <h2>${escapeHtml(card.name)}</h2>
     <p class="muted">${escapeHtml(card.set_code.toUpperCase())} #${escapeHtml(card.collector_number)} · ${card.quantity} tracked · ${escapeHtml(card.condition || "NM")} · ${escapeHtml(card.language || "English")}</p>
-    ${chartSvg(points, card.currency)}
+    ${historyStatus(history, points, card.currency, error)}
     <ul class="history-list">
-      ${card.history.slice().reverse().map(point => `
+      ${(history || []).slice().reverse().map(point => `
         <li>
           <span>${formatDate(point.captured_at)}</span>
           <strong>${money(point.price, point.currency)}</strong>
@@ -549,6 +666,39 @@ function renderDetail(card) {
       `).join("")}
     </ul>
   `;
+}
+
+async function loadCardHistory(cardId) {
+  const request = fetch(`/api/cards/${encodeURIComponent(cardId)}/history`, { cache: "no-store" })
+    .then(async response => {
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || `Request failed with status ${response.status}`);
+      }
+      state.histories.set(cardId, payload.history || []);
+      state.historyErrors.delete(cardId);
+    })
+    .catch(error => {
+      state.historyErrors.set(cardId, error.message);
+    })
+    .finally(() => {
+      state.historyRequests.delete(cardId);
+      state.detailRenderKey = "";
+      if (state.selectedId === cardId) {
+        renderDetail(state.cards.find(card => card.id === cardId));
+      }
+    });
+  state.historyRequests.set(cardId, request);
+}
+
+function historyStatus(history, points, currency, error) {
+  if (error) {
+    return `<p class="muted">Could not load price history: ${escapeHtml(error)}</p>`;
+  }
+  if (!history) {
+    return `<p class="muted">Loading price history...</p>`;
+  }
+  return chartSvg(points, currency);
 }
 
 function cardImage(card) {
@@ -610,10 +760,7 @@ function signedMoney(value, currency) {
 }
 
 function formatDate(value) {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short"
-  }).format(new Date(value));
+  return DATE_FORMATTER.format(new Date(value));
 }
 
 function escapeHtml(value) {

@@ -4,7 +4,7 @@ import json
 import threading
 import time
 from decimal import Decimal
-from typing import TypeVar
+from typing import Iterator, TypeVar
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
@@ -26,6 +26,9 @@ class ScryfallError(RuntimeError):
     pass
 
 
+CardPriceResult = tuple[CardRequest, CardPrice | None, Exception | None]
+
+
 class ScryfallClient:
     def __init__(
         self,
@@ -43,34 +46,40 @@ class ScryfallClient:
         data = self._get_card(card)
         return card_price_from_data(data, currency)
 
-    def fetch_card_prices(self, cards: list[CardRequest], currency: str = "eur") -> list[tuple[CardRequest, CardPrice | None, Exception | None]]:
-        results: list[tuple[CardRequest, CardPrice | None, Exception | None]] = []
+    def fetch_card_prices(self, cards: list[CardRequest], currency: str = "eur") -> list[CardPriceResult]:
+        results: list[CardPriceResult] = []
+        for batch_results in self.fetch_card_price_batches(cards, currency):
+            results.extend(batch_results)
+        return results
+
+    def fetch_card_price_batches(self, cards: list[CardRequest], currency: str = "eur") -> Iterator[list[CardPriceResult]]:
         for batch in chunks(cards, COLLECTION_BATCH_SIZE):
+            batch_results: list[CardPriceResult] = []
             try:
                 data = match_collection_data(batch, self._get_card_collection(batch))
             except ScryfallError:
-                results.extend(self._fetch_card_prices_individually(batch, currency))
+                yield self._fetch_card_prices_individually(batch, currency)
                 continue
 
             # Scryfall's collection response can include not_found entries and does not need to be trusted
             # as input-ordered. Fall back to single lookups when we cannot match every card unambiguously.
             if data is None:
-                results.extend(self._fetch_card_prices_individually(batch, currency))
+                yield self._fetch_card_prices_individually(batch, currency)
                 continue
 
             for card, card_data in zip(batch, data):
                 try:
-                    results.append((card, card_price_from_data(card_data, currency), None))
+                    batch_results.append((card, card_price_from_data(card_data, currency), None))
                 except (KeyError, ValueError) as exc:
-                    results.append((card, None, exc))
-        return results
+                    batch_results.append((card, None, exc))
+            yield batch_results
 
     def fetch_card_prices_by_id(
         self,
         cards: list[tuple[CardRequest, str]],
         currency: str = "eur",
-    ) -> list[tuple[CardRequest, CardPrice | None, Exception | None]]:
-        results: list[tuple[CardRequest, CardPrice | None, Exception | None]] = []
+    ) -> list[CardPriceResult]:
+        results: list[CardPriceResult] = []
         for batch in chunks(cards, COLLECTION_BATCH_SIZE):
             try:
                 response_data = self._request(
@@ -99,8 +108,8 @@ class ScryfallClient:
         self,
         cards: list[CardRequest],
         currency: str,
-    ) -> list[tuple[CardRequest, CardPrice | None, Exception | None]]:
-        results: list[tuple[CardRequest, CardPrice | None, Exception | None]] = []
+    ) -> list[CardPriceResult]:
+        results: list[CardPriceResult] = []
         for card in cards:
             try:
                 results.append((card, self.fetch_card_price(card, currency), None))

@@ -15,7 +15,7 @@ services:
       retries: 10
 
   jace:
-    image: ${JACE_IMAGE:?Set JACE_IMAGE to the image you want Portainer to deploy}
+    image: ${JACE_IMAGE:-jace:latest}
     container_name: jace
     depends_on:
       db:

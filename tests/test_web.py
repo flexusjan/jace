@@ -3,7 +3,7 @@ from decimal import Decimal
 import unittest
 
 from mtg_price_tracker.storage import HistoryPoint, ReportRow
-from mtg_price_tracker.web import cards_payload, import_payload, import_requests_from_payload
+from mtg_price_tracker.web import card_history_payload, cards_payload, import_payload, import_requests_from_payload
 from mtg_price_tracker.importer import ImportFailure, ImportResult
 
 
@@ -49,6 +49,43 @@ class WebPayloadTest(unittest.TestCase):
         self.assertTrue(payload["cards"][0]["has_image_url"])
         self.assertEqual(payload["cards"][0]["change"], "0.22")
         self.assertEqual(len(payload["cards"][0]["history"]), 2)
+
+    def test_cards_payload_omits_history_by_default(self):
+        row = ReportRow(
+            id="entry-1",
+            scryfall_id="card-1",
+            name="Sol Ring",
+            set_code="soc",
+            collector_number="128",
+            source_url="https://scryfall.com/card/soc/128",
+            has_cached_image=False,
+            has_image_url=True,
+            quantity=1,
+            condition="NM",
+            language="English",
+            currency="EUR",
+            latest_price=Decimal("0.72"),
+            latest_captured_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
+            first_price=Decimal("0.50"),
+            first_captured_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        )
+
+        payload = cards_payload([row])
+
+        self.assertNotIn("history", payload["cards"][0])
+
+    def test_card_history_payload_formats_points(self):
+        payload = card_history_payload(
+            [
+                HistoryPoint(
+                    captured_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                    price=Decimal("0.50"),
+                    currency="EUR",
+                )
+            ]
+        )
+
+        self.assertEqual(payload["history"][0]["price"], "0.50")
 
     def test_cards_payload_keys_history_by_scryfall_id(self):
         rows = [

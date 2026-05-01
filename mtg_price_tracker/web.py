@@ -42,7 +42,11 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
             self._send_file(STATIC_DIR / "app.js", "application/javascript; charset=utf-8")
             return
         if path == "/api/cards":
-            self._send_json(cards_payload(self.store.latest_rows(), self.store.history_rows()))
+            self._send_json(cards_payload(self.store.latest_rows()))
+            return
+        if path.startswith("/api/cards/") and path.endswith("/history"):
+            entry_id = unquote(path.removeprefix("/api/cards/").removesuffix("/history"))
+            self._send_json(card_history_payload(self.store.history_rows_for_entry(entry_id)))
             return
         if path == "/api/refresh-status":
             self._send_json(self.refresher.status())
@@ -209,7 +213,7 @@ def serve(host: str, port: int, database_url: str | None) -> int:
     return 0
 
 
-def cards_payload(rows: list[ReportRow], history: dict[str, list[HistoryPoint]]) -> dict[str, Any]:
+def cards_payload(rows: list[ReportRow], history: dict[str, list[HistoryPoint]] | None = None) -> dict[str, Any]:
     return {
         "cards": [
             {
@@ -219,16 +223,35 @@ def cards_payload(rows: list[ReportRow], history: dict[str, list[HistoryPoint]])
                 "change": decimal_to_string(price_change(row)),
                 "latest_captured_at": row.latest_captured_at.isoformat(timespec="seconds"),
                 "first_captured_at": row.first_captured_at.isoformat(timespec="seconds"),
-                "history": [
+                **(
                     {
-                        "captured_at": point.captured_at.isoformat(timespec="seconds"),
-                        "price": decimal_to_string(point.price),
-                        "currency": point.currency,
+                        "history": [
+                            {
+                                "captured_at": point.captured_at.isoformat(timespec="seconds"),
+                                "price": decimal_to_string(point.price),
+                                "currency": point.currency,
+                            }
+                            for point in history.get(row.id, [])
+                        ]
                     }
-                    for point in history.get(row.id, [])
-                ],
+                    if history is not None
+                    else {}
+                ),
             }
             for row in rows
+        ]
+    }
+
+
+def card_history_payload(history: list[HistoryPoint]) -> dict[str, Any]:
+    return {
+        "history": [
+            {
+                "captured_at": point.captured_at.isoformat(timespec="seconds"),
+                "price": decimal_to_string(point.price),
+                "currency": point.currency,
+            }
+            for point in history
         ]
     }
 

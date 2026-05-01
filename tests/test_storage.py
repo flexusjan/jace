@@ -163,6 +163,26 @@ class StorageTest(unittest.TestCase):
         self.assertEqual(history["entry-1"][0].price, Decimal("0.25"))
         self.assertEqual(history["entry-2"][0].price, Decimal("0.75"))
 
+    def test_history_rows_for_entry_filters_by_entry_id(self):
+        connection = FakeConnection(
+            [
+                {
+                    "captured_at": datetime(2026, 2, 1, tzinfo=timezone.utc),
+                    "price": "0.25",
+                    "currency": "EUR",
+                }
+            ]
+        )
+        store = PriceStore(connection=connection)
+
+        history = store.history_rows_for_entry("entry-1")
+
+        statement, parameters = connection.cursor_instance.statements[-1]
+        self.assertIn("WHERE entry_id = %s", statement)
+        self.assertEqual(parameters[0], "entry-1")
+        self.assertEqual(history[0].price, Decimal("0.25"))
+
+
     def test_delete_tracked_cards_removes_only_selected_tracking_entries(self):
         connection = FakeConnection()
         store = PriceStore(connection=connection)

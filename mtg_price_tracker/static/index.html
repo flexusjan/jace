@@ -14,29 +14,16 @@
           <h1>Jace, the Price Tracker</h1>
         </div>
         <div class="summary" aria-live="polite">
-          <span id="card-count">0 cards</span>
-          <span id="portfolio-value">0.00</span>
+          <div class="metric">
+            <span class="metric-label">Cards</span>
+            <strong id="card-count">0 cards</strong>
+          </div>
+          <div class="metric">
+            <span class="metric-label">Total value</span>
+            <strong id="portfolio-value">0.00</strong>
+          </div>
         </div>
       </header>
-
-      <section class="toolbar" aria-label="Filters">
-        <label class="search">
-          <span>Search</span>
-          <input id="search" type="search" autocomplete="off" placeholder="Card name or set">
-        </label>
-        <div class="refresh-status" aria-live="polite">
-          <span id="refresh-state">Prices idle</span>
-          <small id="refresh-times">Last check n/a · Next check n/a</small>
-        </div>
-        <div class="selection-actions" aria-live="polite">
-          <span id="selection-count">0 selected</span>
-          <button id="delete-selected" class="danger" type="button" disabled>Delete</button>
-        </div>
-        <div class="toolbar-actions">
-          <button id="price-refresh" type="button">Update Prices</button>
-          <button id="refresh" type="button">Reload</button>
-        </div>
-      </section>
 
       <section class="import-panel" aria-label="Add cards">
         <div class="import-tabs" role="tablist" aria-label="Import source">
@@ -80,6 +67,41 @@
         <div id="import-results" class="import-results"></div>
       </section>
 
+      <section class="data-toolbar" aria-label="Collection tools">
+        <label class="search">
+          <span>Search collection</span>
+          <input id="search" type="search" autocomplete="off" placeholder="Card name or set">
+        </label>
+        <div class="data-actions">
+          <div class="action-group selection-actions" aria-live="polite" aria-label="Selection actions">
+            <span id="selection-count">0 selected</span>
+            <button id="delete-selected" class="danger" type="button" disabled>Delete</button>
+          </div>
+          <div class="action-group view-actions" aria-label="Table view">
+            <details class="column-menu">
+              <summary>Columns</summary>
+              <div class="column-options" id="column-options" aria-label="Visible columns">
+                <label><input type="checkbox" value="name" checked> Card</label>
+                <label><input type="checkbox" value="set" checked> Set</label>
+                <label><input type="checkbox" value="quantity" checked> Qty</label>
+                <label><input type="checkbox" value="condition" checked> Condition</label>
+                <label><input type="checkbox" value="language" checked> Language</label>
+                <label><input type="checkbox" value="latest_price" checked> Latest</label>
+                <label><input type="checkbox" value="change" checked> Change</label>
+                <label><input type="checkbox" value="latest_captured_at" checked> Captured</label>
+              </div>
+            </details>
+          </div>
+          <div class="action-group price-actions" aria-label="Price update">
+            <div class="refresh-status" aria-live="polite">
+              <span id="refresh-state">Prices idle</span>
+              <small id="refresh-times">Last check n/a · Next check n/a</small>
+            </div>
+            <button id="price-refresh" type="button">Update Prices</button>
+          </div>
+        </div>
+      </section>
+
       <section class="layout">
         <div class="table-wrap">
           <table>
@@ -88,14 +110,14 @@
                 <th class="select-column">
                   <input id="select-all" type="checkbox" aria-label="Select all visible cards">
                 </th>
-                <th><button class="sort-button" type="button" data-sort="name">Card</button></th>
-                <th><button class="sort-button" type="button" data-sort="set">Set</button></th>
-                <th><button class="sort-button" type="button" data-sort="quantity">Qty</button></th>
-                <th><button class="sort-button" type="button" data-sort="condition">Condition</button></th>
-                <th><button class="sort-button" type="button" data-sort="language">Language</button></th>
-                <th><button class="sort-button" type="button" data-sort="latest_price">Latest</button></th>
-                <th><button class="sort-button" type="button" data-sort="change">Change</button></th>
-                <th><button class="sort-button" type="button" data-sort="latest_captured_at">Captured</button></th>
+                <th data-column="name"><button class="sort-button" type="button" data-sort="name">Card</button></th>
+                <th data-column="set"><button class="sort-button" type="button" data-sort="set">Set</button></th>
+                <th data-column="quantity"><button class="sort-button" type="button" data-sort="quantity">Qty</button></th>
+                <th data-column="condition"><button class="sort-button" type="button" data-sort="condition">Condition</button></th>
+                <th data-column="language"><button class="sort-button" type="button" data-sort="language">Language</button></th>
+                <th data-column="latest_price"><button class="sort-button" type="button" data-sort="latest_price">Latest</button></th>
+                <th data-column="change"><button class="sort-button" type="button" data-sort="change">Change</button></th>
+                <th data-column="latest_captured_at"><button class="sort-button" type="button" data-sort="latest_captured_at">Captured</button></th>
               </tr>
             </thead>
             <tbody id="cards"></tbody>

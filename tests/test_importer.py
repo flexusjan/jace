@@ -42,6 +42,43 @@ class FakeBatchClient:
         ]
 
 
+class FakeChunkedBatchClient:
+    def fetch_card_price_batches(self, cards, currency):
+        return [
+            [
+                (
+                    card,
+                    CardPrice(
+                        scryfall_id=f"card-{index}",
+                        name=card.name,
+                        set_code=card.set_code or "abc",
+                        collector_number=card.collector_number or "1",
+                        currency=currency.upper(),
+                        price=Decimal("1.00"),
+                        source_url=f"https://scryfall.example/card-{index}",
+                    ),
+                    None,
+                )
+                for index, card in enumerate(cards[:2], start=1)
+            ],
+            [
+                (
+                    cards[2],
+                    CardPrice(
+                        scryfall_id="card-3",
+                        name=cards[2].name,
+                        set_code=cards[2].set_code or "abc",
+                        collector_number=cards[2].collector_number or "1",
+                        currency=currency.upper(),
+                        price=Decimal("1.00"),
+                        source_url="https://scryfall.example/card-3",
+                    ),
+                    None,
+                )
+            ],
+        ]
+
+
 class FakeStore:
     def __init__(self):
         self.snapshots = []
@@ -85,6 +122,26 @@ class ImporterTest(unittest.TestCase):
         self.assertEqual(len(client.calls), 1)
         self.assertEqual(len(client.calls[0][0]), 2)
         self.assertEqual(len(store.snapshots), 2)
+
+    def test_progress_reports_completed_bulk_batches(self):
+        updates = []
+        store = FakeStore()
+
+        result = import_cards(
+            [
+                CardRequest(quantity=1, name="Counterspell"),
+                CardRequest(quantity=1, name="Sol Ring"),
+                CardRequest(quantity=1, name="Lightning Bolt"),
+            ],
+            store,
+            client=FakeChunkedBatchClient(),
+            progress=updates.append,
+        )
+
+        self.assertEqual(result.imported, 3)
+        self.assertEqual([update["processed"] for update in updates], [0, 2, 2, 3])
+        self.assertEqual([update["started"] for update in updates], [2, 2, 3, 3])
+        self.assertEqual(len(store.snapshots), 3)
 
 
 if __name__ == "__main__":
