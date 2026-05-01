@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Jace the Price Tracker</title>
+    <link rel="stylesheet" href="/app.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Magic: The Gathering</p>
+          <h1>Jace the Price Tracker</h1>
+        </div>
+        <div class="summary" aria-live="polite">
+          <span id="card-count">0 cards</span>
+          <span id="portfolio-value">0.00</span>
+        </div>
+      </header>
+
+      <section class="toolbar" aria-label="Filters">
+        <label class="search">
+          <span>Search</span>
+          <input id="search" type="search" autocomplete="off" placeholder="Card name or set">
+        </label>
+        <button id="refresh" type="button">Refresh</button>
+      </section>
+
+      <section class="layout">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Card</th>
+                <th>Set</th>
+                <th>Qty</th>
+                <th>Latest</th>
+                <th>Change</th>
+                <th>Captured</th>
+              </tr>
+            </thead>
+            <tbody id="cards"></tbody>
+          </table>
+        </div>
+
+        <aside class="detail" id="detail">
+          <h2>No card selected</h2>
+          <p class="muted">Select a row to inspect its price history.</p>
+        </aside>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

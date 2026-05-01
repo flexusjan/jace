@@ -11,7 +11,5 @@ COPY examples ./examples
 
 RUN pip install --no-cache-dir .
 
-VOLUME ["/app/data"]
-
 ENTRYPOINT ["mtg-price-tracker"]
-CMD ["report", "--db", "/app/data/prices.sqlite"]
+CMD ["web", "--host", "0.0.0.0", "--port", "8000"]

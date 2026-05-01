@@ -7,10 +7,13 @@ name = "jace-the-price-tracker"
 version = "0.1.0"
 description = "Track Magic: The Gathering card prices with Scryfall snapshots."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["psycopg[binary]>=3.2,<4"]
 
 [project.scripts]
 mtg-price-tracker = "mtg_price_tracker.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["mtg_price_tracker*"]
+
+[tool.setuptools.package-data]
+mtg_price_tracker = ["static/*"]
