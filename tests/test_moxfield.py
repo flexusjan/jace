@@ -10,6 +10,10 @@ class MoxfieldTest(unittest.TestCase):
             "-NnmAfqku06WdUFKO3BfOw",
         )
 
+    def test_rejects_lookalike_moxfield_host(self):
+        with self.assertRaises(MoxfieldError):
+            extract_deck_id("https://evil-moxfield.com/decks/-NnmAfqku06WdUFKO3BfOw")
+
     def test_cards_from_current_board_shape(self):
         deck = {
             "boards": {

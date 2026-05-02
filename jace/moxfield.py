@@ -51,7 +51,7 @@ class MoxfieldClient:
 
 def extract_deck_id(url: str) -> str:
     parsed = urlparse(url.strip())
-    if parsed.netloc and "moxfield.com" not in parsed.netloc.lower():
+    if parsed.netloc and not moxfield_host_allowed(parsed.hostname):
         raise MoxfieldError("Only Moxfield deck URLs are supported")
 
     path = parsed.path if parsed.netloc else url.strip()
@@ -60,6 +60,11 @@ def extract_deck_id(url: str) -> str:
     if not deck_id:
         raise MoxfieldError("Could not find a Moxfield deck id in the URL")
     return deck_id
+
+
+def moxfield_host_allowed(host: str | None) -> bool:
+    normalized = (host or "").casefold()
+    return normalized == "moxfield.com" or normalized.endswith(".moxfield.com")
 
 
 def cards_from_deck(deck: dict) -> list[CardRequest]:

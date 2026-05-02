@@ -11,5 +11,8 @@ COPY examples ./examples
 
 RUN pip install --no-cache-dir .
 
+RUN useradd --create-home --home-dir /home/jace --shell /usr/sbin/nologin jace
+USER jace
+
 ENTRYPOINT ["jace"]
 CMD ["web", "--host", "0.0.0.0", "--port", "8180"]

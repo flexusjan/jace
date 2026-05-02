@@ -29,12 +29,17 @@ from .scryfall import ScryfallError
 from .storage import HistoryPoint, PriceStore, ReportRow
 
 STATIC_DIR = Path(__file__).with_name("static")
+ALLOWED_IMAGE_HOST_SUFFIX = ".scryfall.io"
 
 
 class PriceTrackerHandler(BaseHTTPRequestHandler):
     store: PriceStore
     jobs: ImportJobs
     refresher: PriceRefreshScheduler
+
+    def end_headers(self) -> None:
+        self._send_security_headers()
+        super().end_headers()
 
     def do_GET(self) -> None:
         if not self._authorized():
@@ -85,6 +90,9 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
         if not self._authorized():
             self._send_auth_required()
             return
+        if not self._valid_mutation_origin():
+            self._send_json({"error": "Invalid request origin"}, HTTPStatus.FORBIDDEN)
+            return
         path = urlparse(self.path).path
         if path == "/api/import":
             self._handle_import()
@@ -98,6 +106,9 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
     def do_DELETE(self) -> None:
         if not self._authorized():
             self._send_auth_required()
+            return
+        if not self._valid_mutation_origin():
+            self._send_json({"error": "Invalid request origin"}, HTTPStatus.FORBIDDEN)
             return
         path = urlparse(self.path).path
         if path == "/api/cards":
@@ -115,6 +126,10 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
             if not requests:
                 self._send_json({"error": "No cards found in import input"}, HTTPStatus.BAD_REQUEST)
                 return
+            max_cards = app_config().max_import_cards
+            if len(requests) > max_cards:
+                self._send_json({"error": f"Import can contain at most {max_cards} cards"}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+                return
             currency = str(payload.get("currency") or app_config().default_currency).lower()
             if currency not in SUPPORTED_CURRENCIES:
                 self._send_json({"error": "Currency must be eur, usd, or tix"}, HTTPStatus.BAD_REQUEST)
@@ -122,6 +137,12 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
             job = self.jobs.create(requests, currency, self.store.database_url)
         except json.JSONDecodeError as exc:
             self._send_json({"error": f"Invalid JSON: {exc.msg}"}, HTTPStatus.BAD_REQUEST)
+            return
+        except RequestTooLargeError as exc:
+            self._send_json({"error": str(exc)}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+            return
+        except TooManyJobsError as exc:
+            self._send_json({"error": str(exc)}, HTTPStatus.TOO_MANY_REQUESTS)
             return
         except (ValueError, MoxfieldError, ScryfallError) as exc:
             self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
@@ -133,6 +154,9 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or "0")
         if length <= 0:
             raise ValueError("Request body is required")
+        max_length = app_config().max_request_body_bytes
+        if length > max_length:
+            raise RequestTooLargeError(f"Request body must be at most {max_length} bytes")
         body = self.rfile.read(length).decode("utf-8")
         payload = json.loads(body)
         if not isinstance(payload, dict):
@@ -148,6 +172,36 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
             return False
         username, password = credentials
         return hmac.compare_digest(username, config.auth_username) and hmac.compare_digest(password, config.auth_password)
+
+    def _valid_mutation_origin(self) -> bool:
+        config = app_config()
+        if not config.auth_username or not config.auth_password:
+            return True
+        origin = self.headers.get("Origin")
+        if origin:
+            return request_origin_allowed(origin, self.headers.get("Host"))
+        referer = self.headers.get("Referer")
+        if referer:
+            return request_origin_allowed(referer, self.headers.get("Host"))
+        return False
+
+    def _send_security_headers(self) -> None:
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "same-origin")
+        self.send_header("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self'; "
+            "img-src 'self' data:; "
+            "connect-src 'self'; "
+            "object-src 'none'; "
+            "base-uri 'none'; "
+            "form-action 'self'; "
+            "frame-ancestors 'none'",
+        )
 
     def _send_auth_required(self) -> None:
         body = b"Authentication required\n"
@@ -186,6 +240,9 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
             deleted = self.store.delete_cards(scryfall_ids)
         except json.JSONDecodeError as exc:
             self._send_json({"error": f"Invalid JSON: {exc.msg}"}, HTTPStatus.BAD_REQUEST)
+            return
+        except RequestTooLargeError as exc:
+            self._send_json({"error": str(exc)}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
             return
         except ValueError as exc:
             self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
@@ -383,6 +440,15 @@ def basic_auth_credentials(header: str | None) -> tuple[str, str] | None:
     return username, password
 
 
+def request_origin_allowed(value: str, host: str | None) -> bool:
+    if not host:
+        return False
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return False
+    return parsed.netloc.casefold() == host.casefold()
+
+
 def import_payload(result: ImportResult) -> dict[str, Any]:
     return {
         "total": result.total,
@@ -415,6 +481,10 @@ class ImportJobs:
     def create(self, requests: list[CardRequest], currency: str, database_url: str | None) -> dict[str, Any]:
         job = ImportJob(id=uuid.uuid4().hex, total=len(requests), currency=currency)
         with self._lock:
+            running = sum(1 for current in self._jobs.values() if current.status in {"queued", "running"})
+            max_jobs = app_config().max_import_jobs
+            if running >= max_jobs:
+                raise TooManyJobsError(f"At most {max_jobs} import jobs can run at once")
             self._jobs[job.id] = job
         thread = threading.Thread(target=self._run, args=(job.id, requests, currency, database_url), daemon=True)
         thread.start()
@@ -474,17 +544,43 @@ class ImageFetchError(RuntimeError):
     pass
 
 
+class RequestTooLargeError(ValueError):
+    pass
+
+
+class TooManyJobsError(RuntimeError):
+    pass
+
+
 def fetch_image(url: str) -> tuple[str, bytes]:
     config = app_config()
+    if not scryfall_image_url_allowed(url):
+        raise ImageFetchError("Card image URL is not an allowed Scryfall HTTPS URL")
     request = Request(url, headers={"User-Agent": APP_USER_AGENT, "Accept": "image/*"})
     try:
         with urlopen(request, timeout=config.image_fetch_timeout_seconds) as response:
             content_type = response.headers.get_content_type() or "image/jpeg"
-            return content_type, response.read()
+            if not content_type.startswith("image/"):
+                raise ImageFetchError(f"Scryfall image returned unexpected content type {content_type}")
+            content_length = response.headers.get("Content-Length")
+            if content_length is not None and int(content_length) > config.max_image_bytes:
+                raise ImageFetchError(f"Scryfall image exceeded {config.max_image_bytes} bytes")
+            data = response.read(config.max_image_bytes + 1)
+            if len(data) > config.max_image_bytes:
+                raise ImageFetchError(f"Scryfall image exceeded {config.max_image_bytes} bytes")
+            return content_type, data
     except HTTPError as exc:
         raise ImageFetchError(f"Scryfall image returned HTTP {exc.code}") from exc
     except URLError as exc:
         raise ImageFetchError(f"Could not fetch Scryfall image: {exc.reason}") from exc
+    except ValueError as exc:
+        raise ImageFetchError(f"Scryfall image returned invalid metadata: {exc}") from exc
+
+
+def scryfall_image_url_allowed(url: str) -> bool:
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").casefold()
+    return parsed.scheme == "https" and (host == "scryfall.io" or host.endswith(ALLOWED_IMAGE_HOST_SUFFIX))
 
 
 def price_change(row: ReportRow) -> Decimal | None:

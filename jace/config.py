@@ -14,6 +14,10 @@ DEFAULT_SCRYFALL_REQUEST_INTERVAL_SECONDS = 0.12
 DEFAULT_SCRYFALL_COLLECTION_REQUEST_INTERVAL_SECONDS = 0.55
 DEFAULT_SCRYFALL_TIMEOUT_SECONDS = 20.0
 DEFAULT_IMAGE_FETCH_TIMEOUT_SECONDS = 20.0
+DEFAULT_MAX_REQUEST_BODY_BYTES = 1024 * 1024
+DEFAULT_MAX_IMPORT_CARDS = 1000
+DEFAULT_MAX_IMPORT_JOBS = 4
+DEFAULT_MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 SUPPORTED_CURRENCIES = {"eur", "usd", "tix"}
 
@@ -32,6 +36,10 @@ class AppConfig:
     image_fetch_timeout_seconds: float = DEFAULT_IMAGE_FETCH_TIMEOUT_SECONDS
     auth_username: str | None = None
     auth_password: str | None = None
+    max_request_body_bytes: int = DEFAULT_MAX_REQUEST_BODY_BYTES
+    max_import_cards: int = DEFAULT_MAX_IMPORT_CARDS
+    max_import_jobs: int = DEFAULT_MAX_IMPORT_JOBS
+    max_image_bytes: int = DEFAULT_MAX_IMAGE_BYTES
 
 
 def app_config() -> AppConfig:
@@ -61,6 +69,10 @@ def app_config() -> AppConfig:
         image_fetch_timeout_seconds=env_float("JACE_IMAGE_FETCH_TIMEOUT_SECONDS", DEFAULT_IMAGE_FETCH_TIMEOUT_SECONDS, minimum=0.1),
         auth_username=auth_username,
         auth_password=auth_password,
+        max_request_body_bytes=env_int("JACE_MAX_REQUEST_BODY_BYTES", DEFAULT_MAX_REQUEST_BODY_BYTES, minimum=1024),
+        max_import_cards=env_int("JACE_MAX_IMPORT_CARDS", DEFAULT_MAX_IMPORT_CARDS, minimum=1),
+        max_import_jobs=env_int("JACE_MAX_IMPORT_JOBS", DEFAULT_MAX_IMPORT_JOBS, minimum=1),
+        max_image_bytes=env_int("JACE_MAX_IMAGE_BYTES", DEFAULT_MAX_IMAGE_BYTES, minimum=1024),
     )
 
 

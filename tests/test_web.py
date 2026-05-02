@@ -2,16 +2,23 @@ from base64 import b64encode
 from datetime import datetime, timezone
 from decimal import Decimal
 import unittest
+from unittest.mock import patch
 
+from jace.models import CardRequest
 from jace.refresher import RefreshStatus, refresh_status_payload
 from jace.storage import HistoryPoint, ReportPage, ReportRow
 from jace.web import (
+    ImportJob,
+    ImportJobs,
+    TooManyJobsError,
     basic_auth_credentials,
     card_history_payload,
     cards_payload,
     import_payload,
     import_requests_from_payload,
     report_pagination_payload,
+    request_origin_allowed,
+    scryfall_image_url_allowed,
 )
 from jace.importer import ImportFailure, ImportResult
 
@@ -212,6 +219,24 @@ class WebPayloadTest(unittest.TestCase):
         self.assertIsNone(basic_auth_credentials("Bearer token"))
         self.assertIsNone(basic_auth_credentials("Basic not-base64"))
         self.assertIsNone(basic_auth_credentials("Basic bm9jb2xvbg=="))
+
+    def test_request_origin_allows_same_host(self):
+        self.assertTrue(request_origin_allowed("https://example.com:8180/path", "example.com:8180"))
+        self.assertFalse(request_origin_allowed("https://evil.example.com", "example.com"))
+        self.assertFalse(request_origin_allowed("not-a-url", "example.com"))
+
+    def test_scryfall_image_url_must_be_https_scryfall_host(self):
+        self.assertTrue(scryfall_image_url_allowed("https://cards.scryfall.io/normal/front/card.jpg"))
+        self.assertFalse(scryfall_image_url_allowed("http://cards.scryfall.io/normal/front/card.jpg"))
+        self.assertFalse(scryfall_image_url_allowed("https://evil-scryfall.io/normal/front/card.jpg"))
+
+    def test_import_jobs_rejects_when_active_limit_is_reached(self):
+        jobs = ImportJobs()
+        jobs._jobs["job-1"] = ImportJob(id="job-1", total=1, currency="eur", status="running")
+
+        with patch.dict("os.environ", {"JACE_MAX_IMPORT_JOBS": "1"}, clear=False):
+            with self.assertRaises(TooManyJobsError):
+                jobs.create([CardRequest(quantity=1, name="Sol Ring")], "eur", "postgresql://example")
 
 
 if __name__ == "__main__":

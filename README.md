@@ -59,10 +59,19 @@ Runtime settings can be overridden in `.env`:
 | `JACE_IMAGE_FETCH_TIMEOUT_SECONDS` | `20` | Card image fetch timeout |
 | `JACE_AUTH_USERNAME` | unset | Enables HTTP Basic Auth when set together with `JACE_AUTH_PASSWORD` |
 | `JACE_AUTH_PASSWORD` | unset | HTTP Basic Auth password |
+| `JACE_MAX_REQUEST_BODY_BYTES` | `1048576` | Maximum JSON request body size |
+| `JACE_MAX_IMPORT_CARDS` | `1000` | Maximum cards per import request |
+| `JACE_MAX_IMPORT_JOBS` | `4` | Maximum queued/running import jobs |
+| `JACE_MAX_IMAGE_BYTES` | `10485760` | Maximum cached Scryfall image size |
 
 Set both `JACE_AUTH_USERNAME` and `JACE_AUTH_PASSWORD` to protect the browser
 frontend and API with HTTP Basic Auth. Basic Auth should be used behind HTTPS
 when the app is reachable outside a trusted private network.
+
+When Basic Auth is enabled, mutating browser requests are accepted only from
+the same origin. The web server also sends defensive browser headers, limits
+request and image sizes, and only caches card images from HTTPS Scryfall image
+hosts.
 
 Frontend:
 

@@ -20,6 +20,10 @@ class ConfigTest(unittest.TestCase):
                 "JACE_IMAGE_FETCH_TIMEOUT_SECONDS": "6",
                 "JACE_AUTH_USERNAME": "alice",
                 "JACE_AUTH_PASSWORD": "secret",
+                "JACE_MAX_REQUEST_BODY_BYTES": "2048",
+                "JACE_MAX_IMPORT_CARDS": "20",
+                "JACE_MAX_IMPORT_JOBS": "2",
+                "JACE_MAX_IMAGE_BYTES": "4096",
             },
             clear=False,
         ):
@@ -36,6 +40,10 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(config.image_fetch_timeout_seconds, 6)
         self.assertEqual(config.auth_username, "alice")
         self.assertEqual(config.auth_password, "secret")
+        self.assertEqual(config.max_request_body_bytes, 2048)
+        self.assertEqual(config.max_import_cards, 20)
+        self.assertEqual(config.max_import_jobs, 2)
+        self.assertEqual(config.max_image_bytes, 4096)
 
     def test_rejects_invalid_bulk_size(self):
         with patch.dict("os.environ", {"JACE_SCRYFALL_BULK_SIZE": "100"}, clear=False):
