@@ -30,10 +30,16 @@ class AppConfig:
     scryfall_collection_request_interval_seconds: float = DEFAULT_SCRYFALL_COLLECTION_REQUEST_INTERVAL_SECONDS
     scryfall_timeout_seconds: float = DEFAULT_SCRYFALL_TIMEOUT_SECONDS
     image_fetch_timeout_seconds: float = DEFAULT_IMAGE_FETCH_TIMEOUT_SECONDS
+    auth_username: str | None = None
+    auth_password: str | None = None
 
 
 def app_config() -> AppConfig:
     default_currency = env_currency("JACE_DEFAULT_CURRENCY", DEFAULT_CURRENCY)
+    auth_username = env_optional_str("JACE_AUTH_USERNAME")
+    auth_password = env_optional_str("JACE_AUTH_PASSWORD")
+    if bool(auth_username) != bool(auth_password):
+        raise ValueError("JACE_AUTH_USERNAME and JACE_AUTH_PASSWORD must be set together")
     return AppConfig(
         default_currency=default_currency,
         web_host=env_str("JACE_WEB_HOST", DEFAULT_WEB_HOST),
@@ -53,6 +59,8 @@ def app_config() -> AppConfig:
         ),
         scryfall_timeout_seconds=env_float("JACE_SCRYFALL_TIMEOUT_SECONDS", DEFAULT_SCRYFALL_TIMEOUT_SECONDS, minimum=0.1),
         image_fetch_timeout_seconds=env_float("JACE_IMAGE_FETCH_TIMEOUT_SECONDS", DEFAULT_IMAGE_FETCH_TIMEOUT_SECONDS, minimum=0.1),
+        auth_username=auth_username,
+        auth_password=auth_password,
     )
 
 
@@ -60,6 +68,13 @@ def env_str(name: str, default: str) -> str:
     value = os.environ.get(name)
     if value is None or not value.strip():
         return default
+    return value.strip()
+
+
+def env_optional_str(name: str) -> str | None:
+    value = os.environ.get(name)
+    if value is None or not value.strip():
+        return None
     return value.strip()
 
 

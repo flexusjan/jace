@@ -18,6 +18,8 @@ class ConfigTest(unittest.TestCase):
                 "JACE_SCRYFALL_COLLECTION_REQUEST_INTERVAL_SECONDS": "0.8",
                 "JACE_SCRYFALL_TIMEOUT_SECONDS": "5",
                 "JACE_IMAGE_FETCH_TIMEOUT_SECONDS": "6",
+                "JACE_AUTH_USERNAME": "alice",
+                "JACE_AUTH_PASSWORD": "secret",
             },
             clear=False,
         ):
@@ -32,10 +34,17 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(config.scryfall_collection_request_interval_seconds, 0.8)
         self.assertEqual(config.scryfall_timeout_seconds, 5)
         self.assertEqual(config.image_fetch_timeout_seconds, 6)
+        self.assertEqual(config.auth_username, "alice")
+        self.assertEqual(config.auth_password, "secret")
 
     def test_rejects_invalid_bulk_size(self):
         with patch.dict("os.environ", {"JACE_SCRYFALL_BULK_SIZE": "100"}, clear=False):
             with self.assertRaisesRegex(ValueError, "JACE_SCRYFALL_BULK_SIZE"):
+                app_config()
+
+    def test_rejects_partial_auth_config(self):
+        with patch.dict("os.environ", {"JACE_AUTH_USERNAME": "alice", "JACE_AUTH_PASSWORD": ""}, clear=False):
+            with self.assertRaisesRegex(ValueError, "JACE_AUTH_USERNAME"):
                 app_config()
 
 

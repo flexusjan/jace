@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import base64
+import binascii
+import hmac
 import threading
 import uuid
 from dataclasses import asdict
@@ -34,6 +37,9 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
     refresher: PriceRefreshScheduler
 
     def do_GET(self) -> None:
+        if not self._authorized():
+            self._send_auth_required()
+            return
         path = urlparse(self.path).path
         if path == "/":
             self._send_file(STATIC_DIR / "index.html", "text/html; charset=utf-8")
@@ -76,6 +82,9 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:
+        if not self._authorized():
+            self._send_auth_required()
+            return
         path = urlparse(self.path).path
         if path == "/api/import":
             self._handle_import()
@@ -87,6 +96,9 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_DELETE(self) -> None:
+        if not self._authorized():
+            self._send_auth_required()
+            return
         path = urlparse(self.path).path
         if path == "/api/cards":
             self._handle_delete_cards()
@@ -126,6 +138,26 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
         if not isinstance(payload, dict):
             raise ValueError("JSON object is required")
         return payload
+
+    def _authorized(self) -> bool:
+        config = app_config()
+        if not config.auth_username or not config.auth_password:
+            return True
+        credentials = basic_auth_credentials(self.headers.get("Authorization"))
+        if credentials is None:
+            return False
+        username, password = credentials
+        return hmac.compare_digest(username, config.auth_username) and hmac.compare_digest(password, config.auth_password)
+
+    def _send_auth_required(self) -> None:
+        body = b"Authentication required\n"
+        self.send_response(HTTPStatus.UNAUTHORIZED)
+        self.send_header("WWW-Authenticate", 'Basic realm="jace", charset="UTF-8"')
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _handle_delete_cards(self) -> None:
         try:
@@ -333,6 +365,22 @@ def import_requests_from_payload(payload: dict[str, Any]) -> list[CardRequest]:
     if not text:
         raise ValueError("Card text is required")
     return parse_card_text(text, source="frontend")
+
+
+def basic_auth_credentials(header: str | None) -> tuple[str, str] | None:
+    if not header:
+        return None
+    scheme, _, encoded = header.partition(" ")
+    if scheme.lower() != "basic" or not encoded.strip():
+        return None
+    try:
+        decoded = base64.b64decode(encoded.strip(), validate=True).decode("utf-8")
+    except (binascii.Error, UnicodeDecodeError):
+        return None
+    username, separator, password = decoded.partition(":")
+    if not separator:
+        return None
+    return username, password
 
 
 def import_payload(result: ImportResult) -> dict[str, Any]:

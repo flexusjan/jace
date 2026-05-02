@@ -57,6 +57,12 @@ Runtime settings can be overridden in `.env`:
 | `JACE_SCRYFALL_COLLECTION_REQUEST_INTERVAL_SECONDS` | `0.55` | Delay between collection/bulk Scryfall requests |
 | `JACE_SCRYFALL_TIMEOUT_SECONDS` | `20` | Scryfall API request timeout |
 | `JACE_IMAGE_FETCH_TIMEOUT_SECONDS` | `20` | Card image fetch timeout |
+| `JACE_AUTH_USERNAME` | unset | Enables HTTP Basic Auth when set together with `JACE_AUTH_PASSWORD` |
+| `JACE_AUTH_PASSWORD` | unset | HTTP Basic Auth password |
+
+Set both `JACE_AUTH_USERNAME` and `JACE_AUTH_PASSWORD` to protect the browser
+frontend and API with HTTP Basic Auth. Basic Auth should be used behind HTTPS
+when the app is reachable outside a trusted private network.
 
 Frontend:
 

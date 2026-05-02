@@ -1,10 +1,18 @@
+from base64 import b64encode
 from datetime import datetime, timezone
 from decimal import Decimal
 import unittest
 
 from jace.refresher import RefreshStatus, refresh_status_payload
 from jace.storage import HistoryPoint, ReportPage, ReportRow
-from jace.web import card_history_payload, cards_payload, import_payload, import_requests_from_payload, report_pagination_payload
+from jace.web import (
+    basic_auth_credentials,
+    card_history_payload,
+    cards_payload,
+    import_payload,
+    import_requests_from_payload,
+    report_pagination_payload,
+)
 from jace.importer import ImportFailure, ImportResult
 
 
@@ -193,6 +201,17 @@ class WebPayloadTest(unittest.TestCase):
         self.assertEqual(payload["processed"], 2)
         self.assertEqual(payload["refreshed"], 1)
         self.assertEqual(payload["failed"], 1)
+
+    def test_basic_auth_credentials_parses_valid_header(self):
+        token = b64encode("alice:secret".encode("utf-8")).decode("ascii")
+
+        self.assertEqual(basic_auth_credentials(f"Basic {token}"), ("alice", "secret"))
+
+    def test_basic_auth_credentials_rejects_invalid_headers(self):
+        self.assertIsNone(basic_auth_credentials(None))
+        self.assertIsNone(basic_auth_credentials("Bearer token"))
+        self.assertIsNone(basic_auth_credentials("Basic not-base64"))
+        self.assertIsNone(basic_auth_credentials("Basic bm9jb2xvbg=="))
 
 
 if __name__ == "__main__":
