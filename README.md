@@ -51,6 +51,7 @@ Runtime settings can be overridden in `.env`:
 | `JACE_DEFAULT_CURRENCY` | `eur` | Default import currency (`eur`, `usd`, or `tix`) |
 | `JACE_WEB_HOST` | `0.0.0.0` | Web server bind host |
 | `JACE_WEB_PORT` | `8180` | Web server bind port inside the container |
+| `JACE_DARK_THEME` | `true` | Use the dark frontend theme; set to `false` for light mode |
 | `JACE_REFRESH_INTERVAL_SECONDS` | `3600` | Automatic stale price refresh interval |
 | `JACE_SCRYFALL_BULK_SIZE` | `75` | Scryfall collection request size, max `75` |
 | `JACE_SCRYFALL_REQUEST_INTERVAL_SECONDS` | `0.12` | Delay between regular Scryfall requests |

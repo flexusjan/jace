@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from jace.models import CardRequest
 from jace.refresher import RefreshStatus, refresh_status_payload
-from jace.storage import HistoryPoint, ReportPage, ReportRow
+from jace.storage import HistoryPoint, ReportPage, ReportRow, ValueHistoryPoint
 from jace.web import (
     ImportJob,
     ImportJobs,
@@ -17,8 +17,10 @@ from jace.web import (
     import_payload,
     import_requests_from_payload,
     report_pagination_payload,
+    rendered_index_html,
     request_origin_allowed,
     scryfall_image_url_allowed,
+    value_history_payload,
 )
 from jace.importer import ImportFailure, ImportResult
 
@@ -35,7 +37,7 @@ class WebPayloadTest(unittest.TestCase):
             has_cached_image=False,
             has_image_url=True,
             quantity=1,
-            condition="NM",
+            condition="Near Mint",
             language="English",
             currency="EUR",
             latest_price=Decimal("0.72"),
@@ -77,7 +79,7 @@ class WebPayloadTest(unittest.TestCase):
             has_cached_image=False,
             has_image_url=True,
             quantity=1,
-            condition="NM",
+            condition="Near Mint",
             language="English",
             currency="EUR",
             latest_price=Decimal("0.72"),
@@ -114,6 +116,24 @@ class WebPayloadTest(unittest.TestCase):
 
         self.assertEqual(payload["history"][0]["price"], "0.50")
 
+    def test_value_history_payload_formats_points(self):
+        payload = value_history_payload(
+            [
+                ValueHistoryPoint(
+                    captured_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                    total_value=Decimal("12.50"),
+                    currency="EUR",
+                )
+            ]
+        )
+
+        self.assertEqual(payload["history"][0]["total_value"], "12.50")
+        self.assertEqual(payload["history"][0]["currency"], "EUR")
+
+    def test_rendered_index_html_uses_configured_theme(self):
+        self.assertIn('data-theme="dark"', rendered_index_html(True))
+        self.assertIn('data-theme="light"', rendered_index_html(False))
+
     def test_cards_payload_keys_history_by_scryfall_id(self):
         rows = [
             ReportRow(
@@ -126,7 +146,7 @@ class WebPayloadTest(unittest.TestCase):
                 has_cached_image=False,
                 has_image_url=False,
                 quantity=1,
-                condition="NM",
+                condition="Near Mint",
                 language="English",
                 currency="EUR",
                 latest_price=Decimal("0.25"),
@@ -144,7 +164,7 @@ class WebPayloadTest(unittest.TestCase):
                 has_cached_image=False,
                 has_image_url=False,
                 quantity=1,
-                condition="NM",
+                condition="Near Mint",
                 language="English",
                 currency="EUR",
                 latest_price=Decimal("0.75"),
@@ -184,7 +204,7 @@ class WebPayloadTest(unittest.TestCase):
         self.assertEqual(requests[0].name, "Counterspell")
         self.assertEqual(requests[0].set_code, "clu")
         self.assertEqual(requests[0].collector_number, "84")
-        self.assertEqual(requests[0].condition, "NM")
+        self.assertEqual(requests[0].condition, "Near Mint")
         self.assertEqual(requests[0].language, "English")
 
     def test_import_payload_includes_failures(self):

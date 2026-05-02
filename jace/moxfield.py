@@ -8,6 +8,7 @@ from urllib.request import Request, urlopen
 
 from . import APP_USER_AGENT
 from .models import CardRequest
+from .parser import normalize_condition, normalize_language
 
 BASE_URL = "https://api2.moxfield.com"
 
@@ -120,15 +121,15 @@ def request_from_moxfield_entry(fallback_name: str, entry: object) -> CardReques
 
     set_code = card.get("set") or card.get("setCode")
     collector_number = card.get("cn") or card.get("collectorNumber")
-    condition = entry.get("condition") or card.get("condition") or "NM"
+    condition = entry.get("condition") or card.get("condition")
     language = entry.get("language") or card.get("language") or "English"
     return CardRequest(
         quantity=quantity,
         name=str(name),
         set_code=str(set_code).lower() if set_code else None,
         collector_number=str(collector_number) if collector_number else None,
-        condition=str(condition),
-        language=str(language),
+        condition=normalize_condition(str(condition) if condition is not None else None),
+        language=normalize_language(str(language) if language is not None else None),
     )
 
 

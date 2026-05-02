@@ -18,6 +18,7 @@ DEFAULT_MAX_REQUEST_BODY_BYTES = 1024 * 1024
 DEFAULT_MAX_IMPORT_CARDS = 1000
 DEFAULT_MAX_IMPORT_JOBS = 4
 DEFAULT_MAX_IMAGE_BYTES = 10 * 1024 * 1024
+DEFAULT_DARK_THEME = True
 
 SUPPORTED_CURRENCIES = {"eur", "usd", "tix"}
 
@@ -40,6 +41,7 @@ class AppConfig:
     max_import_cards: int = DEFAULT_MAX_IMPORT_CARDS
     max_import_jobs: int = DEFAULT_MAX_IMPORT_JOBS
     max_image_bytes: int = DEFAULT_MAX_IMAGE_BYTES
+    dark_theme: bool = DEFAULT_DARK_THEME
 
 
 def app_config() -> AppConfig:
@@ -73,6 +75,7 @@ def app_config() -> AppConfig:
         max_import_cards=env_int("JACE_MAX_IMPORT_CARDS", DEFAULT_MAX_IMPORT_CARDS, minimum=1),
         max_import_jobs=env_int("JACE_MAX_IMPORT_JOBS", DEFAULT_MAX_IMPORT_JOBS, minimum=1),
         max_image_bytes=env_int("JACE_MAX_IMAGE_BYTES", DEFAULT_MAX_IMAGE_BYTES, minimum=1024),
+        dark_theme=env_bool("JACE_DARK_THEME", DEFAULT_DARK_THEME),
     )
 
 
@@ -121,6 +124,18 @@ def env_float(name: str, default: float, *, minimum: float | None = None, maximu
             raise ValueError(f"{name} must be a number") from exc
     validate_range(name, value, minimum=minimum, maximum=maximum)
     return value
+
+
+def env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be true or false")
 
 
 def validate_range(name: str, value: int | float, *, minimum: int | float | None, maximum: int | float | None) -> None:

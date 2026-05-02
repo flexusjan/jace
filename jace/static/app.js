@@ -15,6 +15,8 @@ const state = {
   histories: new Map(),
   historyErrors: new Map(),
   historyRequests: new Map(),
+  valueHistory: null,
+  valueHistoryError: "",
   detailRenderKey: ""
 };
 
@@ -50,7 +52,7 @@ const columns = [
   },
   {
     key: "condition",
-    render: card => escapeHtml(card.condition || "NM")
+    render: card => escapeHtml(conditionLabel(card.condition))
   },
   {
     key: "language",
@@ -85,6 +87,7 @@ const refreshProgress = document.querySelector("#refresh-progress");
 const refreshProgressBar = document.querySelector("#refresh-progress-bar");
 const cardCount = document.querySelector("#card-count");
 const portfolioValue = document.querySelector("#portfolio-value");
+const portfolioChange = document.querySelector("#portfolio-change");
 const importForm = document.querySelector("#import-form");
 const importSubmit = document.querySelector("#import-submit");
 const importStatus = document.querySelector("#import-status");
@@ -168,6 +171,7 @@ cardsBody.addEventListener("change", event => {
 });
 
 loadCards();
+loadValueHistory();
 loadRefreshStatus();
 setInterval(loadRefreshStatus, 30000);
 resumeActiveImport();
@@ -213,6 +217,22 @@ async function loadCards() {
   }
 }
 
+async function loadValueHistory() {
+  try {
+    const response = await fetch("/api/value-history", { cache: "no-store" });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `Request failed with status ${response.status}`);
+    }
+    state.valueHistory = payload.history || [];
+    state.valueHistoryError = "";
+  } catch (error) {
+    state.valueHistory = [];
+    state.valueHistoryError = error.message;
+  }
+  renderPortfolioChange();
+}
+
 async function loadRefreshStatus() {
   try {
     const response = await fetch("/api/refresh-status", { cache: "no-store" });
@@ -256,6 +276,7 @@ async function pollPriceRefresh() {
     renderRefreshStatus(status);
     if (!status.running) {
       await loadCards();
+      await loadValueHistory();
       return;
     }
   }
@@ -407,6 +428,7 @@ function forgetActiveImport() {
 async function loadCardsAfterImport(job) {
   const summary = `${job.processed}/${job.total} processed, ${job.imported} imported, ${job.failed} failed`;
   await loadCards();
+  await loadValueHistory();
   importStatus.textContent = summary;
   importStatus.classList.toggle("warning", Boolean(job.failed));
 }
@@ -512,6 +534,7 @@ function render() {
 
   const selected = state.cards.find(card => card.id === state.selectedId) || visible[0];
   renderDetail(selected);
+  renderPortfolioChange();
 }
 
 function reconcileSelection() {
@@ -757,7 +780,7 @@ function renderDetail(card) {
   detail.innerHTML = `
     ${cardImage(card)}
     <h2>${escapeHtml(card.name)}</h2>
-    <p class="muted">${escapeHtml(card.set_code.toUpperCase())} #${escapeHtml(card.collector_number)} · ${card.quantity} tracked · ${escapeHtml(card.condition || "NM")} · ${escapeHtml(card.language || "English")}</p>
+    <p class="muted">${escapeHtml(card.set_code.toUpperCase())} #${escapeHtml(card.collector_number)} · ${card.quantity} tracked · ${escapeHtml(conditionLabel(card.condition))} · ${escapeHtml(card.language || "English")}</p>
     ${historyStatus(history, points, card.currency, error)}
     <ul class="history-list">
       ${(history || []).slice().reverse().map(point => `
@@ -803,6 +826,35 @@ function historyStatus(history, points, currency, error) {
   return chartSvg(points, currency);
 }
 
+function renderPortfolioChange() {
+  if (!portfolioChange) {
+    return;
+  }
+  if (state.valueHistoryError) {
+    portfolioChange.textContent = "";
+    portfolioChange.className = "metric-change";
+    return;
+  }
+  if (!state.valueHistory) {
+    portfolioChange.textContent = "";
+    portfolioChange.className = "metric-change";
+    return;
+  }
+
+  const points = state.valueHistory.filter(point => point.total_value !== null && point.currency);
+  if (points.length === 0) {
+    portfolioChange.textContent = "";
+    portfolioChange.className = "metric-change";
+    return;
+  }
+
+  const first = points[0];
+  const latest = points[points.length - 1];
+  const change = Number(latest.total_value) - Number(first.total_value);
+  portfolioChange.textContent = `(${signedMoney(change, latest.currency)})`;
+  portfolioChange.className = `metric-change ${changeClass({ change })}`;
+}
+
 function cardImage(card) {
   if (!card.has_image_url && !card.has_cached_image) {
     return "";
@@ -822,7 +874,10 @@ function chartSvg(points, currency) {
     return `<p class="muted">One snapshot: ${money(points[0].price, currency)}</p>`;
   }
 
-  const width = 360;
+  return lineChartSvg(points, currency, "Price history chart", 360);
+}
+
+function lineChartSvg(points, currency, label, width) {
   const height = 180;
   const padding = 18;
   const values = points.map(point => Number(point.price));
@@ -836,7 +891,7 @@ function chartSvg(points, currency) {
   });
 
   return `
-    <svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Price history chart">
+    <svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(label)}">
       <rect x="0" y="0" width="${width}" height="${height}" fill="#f4f9ff"></rect>
       <polyline points="${coords.join(" ")}" fill="none" stroke="#2f6fae" stroke-width="3"></polyline>
       <text x="${padding}" y="${padding}" fill="#60758f" font-size="12">${money(max, currency)}</text>
@@ -850,6 +905,23 @@ function money(value, currency) {
     return "n/a";
   }
   return `${Number(value).toFixed(2)} ${currency}`;
+}
+
+function conditionLabel(value) {
+  const normalized = String(value || "Near Mint").trim().toLowerCase().replaceAll("_", " ");
+  const labels = {
+    "nm": "Near Mint",
+    "near mint": "Near Mint",
+    "lp": "Lightly Played",
+    "lightly played": "Lightly Played",
+    "mp": "Moderately Played",
+    "moderately played": "Moderately Played",
+    "hp": "Heavily Played",
+    "heavily played": "Heavily Played",
+    "dmg": "Damaged",
+    "damaged": "Damaged"
+  };
+  return labels[normalized] || String(value || "Near Mint");
 }
 
 function signedMoney(value, currency) {

@@ -7,23 +7,23 @@ from pathlib import Path
 
 from .models import CardRequest
 
-DEFAULT_CONDITION = "NM"
+DEFAULT_CONDITION = "Near Mint"
 DEFAULT_LANGUAGE = "English"
 CONDITION_ALIASES = {
-    "near mint": "NM",
-    "near_mint": "NM",
-    "nm": "NM",
-    "lightly played": "LP",
-    "lightly_played": "LP",
-    "lp": "LP",
-    "moderately played": "MP",
-    "moderately_played": "MP",
-    "mp": "MP",
-    "heavily played": "HP",
-    "heavily_played": "HP",
-    "hp": "HP",
-    "damaged": "DMG",
-    "dmg": "DMG",
+    "near mint": "Near Mint",
+    "near_mint": "Near Mint",
+    "nm": "Near Mint",
+    "lightly played": "Lightly Played",
+    "lightly_played": "Lightly Played",
+    "lp": "Lightly Played",
+    "moderately played": "Moderately Played",
+    "moderately_played": "Moderately Played",
+    "mp": "Moderately Played",
+    "heavily played": "Heavily Played",
+    "heavily_played": "Heavily Played",
+    "hp": "Heavily Played",
+    "damaged": "Damaged",
+    "dmg": "Damaged",
 }
 
 SET_SUFFIX_RE = re.compile(r"^(?:(?P<qty>\d+)x?\s+)?(?P<name>.+?)\s+\[(?P<set>[A-Za-z0-9]{2,8})\]\s*$")

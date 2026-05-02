@@ -62,7 +62,7 @@ class ParserTest(unittest.TestCase):
         self.assertEqual(cards[0].name, "Abstruse Appropriation")
         self.assertEqual(cards[0].set_code, "mh3")
         self.assertEqual(cards[0].collector_number, "177")
-        self.assertEqual(cards[0].condition, "NM")
+        self.assertEqual(cards[0].condition, "Near Mint")
         self.assertEqual(cards[0].language, "English")
         self.assertEqual(cards[1].name, "Aang, Swift Savior // Aang and La, Ocean's Fury")
 
@@ -72,7 +72,7 @@ class ParserTest(unittest.TestCase):
             '"1","Counterspell","clu","Lightly Played","German","84"\n'
         )
 
-        self.assertEqual(cards[0].condition, "LP")
+        self.assertEqual(cards[0].condition, "Lightly Played")
         self.assertEqual(cards[0].language, "German")
 
 

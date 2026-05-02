@@ -26,7 +26,7 @@ from .moxfield import MoxfieldClient, MoxfieldError
 from .parser import parse_card_csv, parse_card_text
 from .refresher import PriceRefreshScheduler
 from .scryfall import ScryfallError
-from .storage import HistoryPoint, PriceStore, ReportRow
+from .storage import HistoryPoint, PriceStore, ReportRow, ValueHistoryPoint
 
 STATIC_DIR = Path(__file__).with_name("static")
 ALLOWED_IMAGE_HOST_SUFFIX = ".scryfall.io"
@@ -47,7 +47,7 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
             return
         path = urlparse(self.path).path
         if path == "/":
-            self._send_file(STATIC_DIR / "index.html", "text/html; charset=utf-8")
+            self._send_index()
             return
         if path == "/app.css":
             self._send_file(STATIC_DIR / "app.css", "text/css; charset=utf-8")
@@ -77,6 +77,9 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
         if path.startswith("/api/cards/") and path.endswith("/history"):
             entry_id = unquote(path.removeprefix("/api/cards/").removesuffix("/history"))
             self._send_json(card_history_payload(self.store.history_rows_for_entry(entry_id)))
+            return
+        if path == "/api/value-history":
+            self._send_json(value_history_payload(self.store.value_history_rows()))
             return
         if path == "/api/refresh-status":
             self._send_json(self.refresher.status())
@@ -292,6 +295,14 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_index(self) -> None:
+        body = rendered_index_html(app_config().dark_theme).encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def _send_json(self, payload: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload, default=json_default).encode("utf-8")
         self.send_response(status)
@@ -320,6 +331,11 @@ def serve(host: str, port: int, database_url: str | None) -> int:
         server.server_close()
         store.close()
     return 0
+
+
+def rendered_index_html(dark_theme: bool) -> str:
+    theme = "dark" if dark_theme else "light"
+    return (STATIC_DIR / "index.html").read_text(encoding="utf-8").replace('data-theme="dark"', f'data-theme="{theme}"')
 
 
 def cards_payload(
@@ -397,6 +413,19 @@ def card_history_payload(history: list[HistoryPoint]) -> dict[str, Any]:
             {
                 "captured_at": point.captured_at.isoformat(timespec="seconds"),
                 "price": decimal_to_string(point.price),
+                "currency": point.currency,
+            }
+            for point in history
+        ]
+    }
+
+
+def value_history_payload(history: list[ValueHistoryPoint]) -> dict[str, Any]:
+    return {
+        "history": [
+            {
+                "captured_at": point.captured_at.isoformat(timespec="seconds"),
+                "total_value": decimal_to_string(point.total_value),
                 "currency": point.currency,
             }
             for point in history

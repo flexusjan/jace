@@ -22,7 +22,7 @@ class FakeCursor:
         self.statements.append((statement, parameters))
         if "DELETE FROM cards" in statement and parameters:
             self.rowcount = len(parameters[0])
-        if "COUNT(DISTINCT" in statement:
+        if "COUNT(DISTINCT" in statement and parameters:
             self.rows = [{"deleted": len(parameters[0])}]
         if "COUNT(*) AS total_count" in statement:
             self.rows = [{"total_count": 1, "total_value": "4.50", "currency": "EUR"}]
@@ -85,7 +85,7 @@ class StorageTest(unittest.TestCase):
         self.assertIsNotNone(insert_cards)
         self.assertIsInstance(insert_snapshots[1][0], str)
         self.assertEqual(insert_snapshots[1][3], 2)
-        self.assertEqual(insert_snapshots[1][4], "NM")
+        self.assertEqual(insert_snapshots[1][4], "Near Mint")
         self.assertEqual(insert_snapshots[1][5], "English")
         self.assertEqual(connection.commits, 2)
         self.assertEqual(connection.rollbacks, 0)
@@ -102,7 +102,7 @@ class StorageTest(unittest.TestCase):
             "has_cached_image": False,
             "has_image_url": True,
             "quantity": 2,
-            "condition": "NM",
+            "condition": "Near Mint",
             "language": "English",
             "currency": "EUR",
             "latest_price": "2.25",
@@ -117,7 +117,7 @@ class StorageTest(unittest.TestCase):
         self.assertEqual(report.scryfall_id, "card-1")
         self.assertTrue(report.has_image_url)
         self.assertEqual(report.quantity, 2)
-        self.assertEqual(report.condition, "NM")
+        self.assertEqual(report.condition, "Near Mint")
         self.assertEqual(report.language, "English")
         self.assertEqual(report.latest_price, Decimal("2.25"))
         self.assertEqual(report.first_price, Decimal("1.50"))
@@ -184,6 +184,30 @@ class StorageTest(unittest.TestCase):
         self.assertEqual(parameters[0], "entry-1")
         self.assertEqual(history[0].price, Decimal("0.25"))
 
+    def test_value_history_rows_calculates_total_values_over_time(self):
+        connection = FakeConnection(
+            [
+                {
+                    "captured_at": datetime(2026, 2, 1, tzinfo=timezone.utc),
+                    "total_value": "4.50",
+                    "currency": "EUR",
+                }
+            ]
+        )
+        store = PriceStore(connection=connection)
+
+        history = store.value_history_rows()
+
+        statement = connection.cursor_instance.statements[-1][0]
+        self.assertIn("collection_start", statement)
+        self.assertIn("MAX(first_captured_at)", statement)
+        self.assertIn("captured_at >=", statement)
+        self.assertIn("snapshot_times", statement)
+        self.assertIn("JOIN LATERAL", statement)
+        self.assertIn("SUM(latest.price * latest.quantity)", statement)
+        self.assertEqual(history[0].total_value, Decimal("4.50"))
+        self.assertEqual(history[0].currency, "EUR")
+
     def test_latest_page_applies_limit_search_sort_and_summary(self):
         captured_at = datetime(2026, 2, 1, tzinfo=timezone.utc)
         connection = FakeConnection(
@@ -198,7 +222,7 @@ class StorageTest(unittest.TestCase):
                     "has_cached_image": False,
                     "has_image_url": True,
                     "quantity": 2,
-                    "condition": "NM",
+                    "condition": "Near Mint",
                     "language": "English",
                     "currency": "EUR",
                     "latest_price": "2.25",
@@ -250,7 +274,7 @@ class StorageTest(unittest.TestCase):
                     "collector_number": "314",
                     "tracked_name": "Sol Ring",
                     "quantity": 2,
-                    "condition": "LP",
+                    "condition": "Lightly Played",
                     "language": "German",
                     "currency": "EUR",
                     "latest_captured_at": captured_at,
@@ -268,7 +292,7 @@ class StorageTest(unittest.TestCase):
         self.assertEqual(cards[0].id, "entry-1")
         self.assertEqual(cards[0].scryfall_id, "card-1")
         self.assertEqual(cards[0].request.quantity, 2)
-        self.assertEqual(cards[0].request.condition, "LP")
+        self.assertEqual(cards[0].request.condition, "Lightly Played")
         self.assertEqual(cards[0].request.language, "German")
         self.assertEqual(cards[0].currency, "eur")
 

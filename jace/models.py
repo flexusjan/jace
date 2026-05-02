@@ -10,7 +10,7 @@ class CardRequest:
     name: str
     set_code: str | None = None
     collector_number: str | None = None
-    condition: str = "NM"
+    condition: str = "Near Mint"
     language: str = "English"
 
 

@@ -43,7 +43,7 @@ class MoxfieldTest(unittest.TestCase):
         self.assertEqual(cards[1].quantity, 2)
         self.assertEqual(cards[1].set_code, "ltc")
         self.assertEqual(cards[1].collector_number, "314")
-        self.assertEqual(cards[1].condition, "NM")
+        self.assertEqual(cards[1].condition, "Near Mint")
         self.assertEqual(cards[1].language, "English")
 
     def test_cards_from_legacy_board_shape(self):
@@ -80,7 +80,7 @@ class MoxfieldTest(unittest.TestCase):
         cards = cards_from_deck(deck)
 
         self.assertEqual(len(cards), 2)
-        self.assertEqual({card.condition for card in cards}, {"NM", "LP"})
+        self.assertEqual({card.condition for card in cards}, {"Near Mint", "Lightly Played"})
 
     def test_invalid_quantity_raises_moxfield_error(self):
         deck = {

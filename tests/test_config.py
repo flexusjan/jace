@@ -24,6 +24,7 @@ class ConfigTest(unittest.TestCase):
                 "JACE_MAX_IMPORT_CARDS": "20",
                 "JACE_MAX_IMPORT_JOBS": "2",
                 "JACE_MAX_IMAGE_BYTES": "4096",
+                "JACE_DARK_THEME": "false",
             },
             clear=False,
         ):
@@ -44,6 +45,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(config.max_import_cards, 20)
         self.assertEqual(config.max_import_jobs, 2)
         self.assertEqual(config.max_image_bytes, 4096)
+        self.assertFalse(config.dark_theme)
 
     def test_rejects_invalid_bulk_size(self):
         with patch.dict("os.environ", {"JACE_SCRYFALL_BULK_SIZE": "100"}, clear=False):
@@ -53,6 +55,11 @@ class ConfigTest(unittest.TestCase):
     def test_rejects_partial_auth_config(self):
         with patch.dict("os.environ", {"JACE_AUTH_USERNAME": "alice", "JACE_AUTH_PASSWORD": ""}, clear=False):
             with self.assertRaisesRegex(ValueError, "JACE_AUTH_USERNAME"):
+                app_config()
+
+    def test_rejects_invalid_dark_theme_flag(self):
+        with patch.dict("os.environ", {"JACE_DARK_THEME": "maybe"}, clear=False):
+            with self.assertRaisesRegex(ValueError, "JACE_DARK_THEME"):
                 app_config()
 
 

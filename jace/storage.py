@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS price_snapshots (
     scryfall_id TEXT NOT NULL REFERENCES cards(scryfall_id),
     tracked_name TEXT NOT NULL,
     quantity INTEGER NOT NULL,
-    condition TEXT NOT NULL DEFAULT 'NM',
+    condition TEXT NOT NULL DEFAULT 'Near Mint',
     language TEXT NOT NULL DEFAULT 'English',
     currency TEXT NOT NULL,
     price NUMERIC(12, 2),
@@ -68,6 +68,13 @@ class HistoryPoint:
     captured_at: datetime
     price: Decimal | None
     currency: str
+
+
+@dataclass(frozen=True)
+class ValueHistoryPoint:
+    captured_at: datetime
+    total_value: Decimal | None
+    currency: str | None
 
 
 @dataclass(frozen=True)
@@ -427,6 +434,51 @@ class PriceStore:
         self.connection.commit()
         return rows
 
+    def value_history_rows(self) -> list[ValueHistoryPoint]:
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                WITH first_snapshots AS (
+                    SELECT entry_id, MIN(captured_at) AS first_captured_at
+                    FROM price_snapshots
+                    GROUP BY entry_id
+                ),
+                collection_start AS (
+                    SELECT MAX(first_captured_at) AS captured_at
+                    FROM first_snapshots
+                ),
+                snapshot_times AS (
+                    SELECT DISTINCT captured_at
+                    FROM price_snapshots
+                    WHERE captured_at >= (SELECT captured_at FROM collection_start)
+                )
+                SELECT
+                    snapshot_times.captured_at,
+                    SUM(latest.price * latest.quantity) AS total_value,
+                    CASE WHEN COUNT(DISTINCT latest.currency) = 1 THEN MIN(latest.currency) ELSE NULL END AS currency
+                FROM snapshot_times
+                JOIN LATERAL (
+                    SELECT DISTINCT ON (entry_id)
+                        entry_id, quantity, currency, price
+                    FROM price_snapshots
+                    WHERE captured_at <= snapshot_times.captured_at
+                    ORDER BY entry_id, captured_at DESC, id DESC
+                ) latest ON TRUE
+                GROUP BY snapshot_times.captured_at
+                ORDER BY snapshot_times.captured_at ASC
+                """
+            )
+            rows = [
+                ValueHistoryPoint(
+                    captured_at=values["captured_at"],
+                    total_value=decimal_or_none(values["total_value"]),
+                    currency=values["currency"],
+                )
+                for values in (dict(row) for row in cursor.fetchall())
+            ]
+        self.connection.commit()
+        return rows
+
     def stale_tracked_cards(self, older_than: datetime) -> list[TrackedCard]:
         with self.connection.cursor() as cursor:
             cursor.execute(
@@ -502,7 +554,7 @@ class PriceStore:
                 cursor.execute("ALTER TABLE price_snapshots ADD COLUMN IF NOT EXISTS entry_id TEXT")
                 cursor.execute("UPDATE price_snapshots SET entry_id = id::text WHERE entry_id IS NULL")
                 cursor.execute("ALTER TABLE price_snapshots ALTER COLUMN entry_id SET NOT NULL")
-                cursor.execute("ALTER TABLE price_snapshots ADD COLUMN IF NOT EXISTS condition TEXT NOT NULL DEFAULT 'NM'")
+                cursor.execute("ALTER TABLE price_snapshots ADD COLUMN IF NOT EXISTS condition TEXT NOT NULL DEFAULT 'Near Mint'")
                 cursor.execute("ALTER TABLE price_snapshots ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'English'")
             self.connection.commit()
         except Exception:
