@@ -18,3 +18,7 @@ include = ["jace*"]
 
 [tool.setuptools.package-data]
 jace = ["static/*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="jace">
+  <defs>
+    <linearGradient id="bg" x1="10" y1="6" x2="54" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7fb6e8"/>
+      <stop offset="0.58" stop-color="#2f6fae"/>
+      <stop offset="1" stop-color="#174b7f"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="20" y1="17" x2="45" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#d9eafb"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <path d="M15 47c8-2 12-7 17-15 4-6 8-10 16-12" fill="none" stroke="#8c6f4f" stroke-width="5" stroke-linecap="round"/>
+  <path d="M44 14v24c0 8-5 13-13 13-6 0-11-3-13-8l9-4c1 3 3 4 5 4 3 0 5-2 5-6V22H25v-8h19z" fill="url(#mark)"/>
+  <circle cx="48" cy="20" r="4" fill="#fbfdff"/>
+  <circle cx="15" cy="47" r="3" fill="#fbfdff"/>
+</svg>

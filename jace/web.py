@@ -55,6 +55,9 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
         if path == "/app.js":
             self._send_file(STATIC_DIR / "app.js", "application/javascript; charset=utf-8")
             return
+        if path == "/favicon.svg":
+            self._send_file(STATIC_DIR / "favicon.svg", "image/svg+xml")
+            return
         if path == "/api/cards":
             params = parse_qs(urlparse(self.path).query)
             page = query_int(params, "page", 1, minimum=1)
