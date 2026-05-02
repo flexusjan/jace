@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 from .config import DEFAULT_REFRESH_INTERVAL_SECONDS
 from .importer import import_cards
+from .logs import log
 from .scryfall import ScryfallClient
 from .storage import PriceStore, TrackedCard
 
@@ -98,6 +99,8 @@ class PriceRefreshScheduler:
 
         refreshed = 0
         error = None
+        mode = "manual" if force else "scheduled"
+        log(f"PRICE REFRESH STARTED mode={mode}")
         try:
             refreshed = refresh_prices(
                 self.database_url,
@@ -107,14 +110,23 @@ class PriceRefreshScheduler:
             )
         except Exception as exc:
             error = str(exc)
-            print(f"PRICE REFRESH FAILED: {exc}")
+            log(f"PRICE REFRESH FAILED mode={mode}: {exc}", level="ERROR")
         finished_at = datetime.now(timezone.utc)
         with self._lock:
+            total = self._status.total
+            processed = self._status.processed
+            failed = self._status.failed
             self._status.running = False
             self._status.last_finished_at = finished_at
             self._status.next_run_at = finished_at + timedelta(seconds=self.interval_seconds)
             self._status.refreshed = refreshed
             self._status.error = error
+        status = "failed" if error is not None else "ok"
+        level = "ERROR" if error is not None else "INFO"
+        log(
+            f"PRICE REFRESH COMPLETED mode={mode} status={status} total={total} processed={processed} refreshed={refreshed} failed={failed}",
+            level=level,
+        )
 
     def _update_progress(self, progress: dict[str, int]) -> None:
         with self._lock:
@@ -169,7 +181,7 @@ def refresh_cards(
         def log_import_progress(update: dict) -> None:
             failures = [asdict(failure) for failure in update["failures"]]
             if failures:
-                print(f"PRICE REFRESH PROGRESS {update['processed']}/{update['started']}: {failures[-1]}")
+                log(f"PRICE REFRESH PROGRESS {update['processed']}/{update['started']}: {failures[-1]}", level="WARNING")
 
         # Save through the normal importer path when the batch lookup had to fall back
         # to per-card behavior; otherwise persist the already-fetched prices directly.
@@ -200,7 +212,7 @@ def refresh_cards(
             price, error = by_request.get(id(tracked.request), (None, RuntimeError("card not refreshed")))
             processed += 1
             if error is not None or price is None:
-                print(f"PRICE REFRESH FAILED {tracked.request.name}: {error or 'card not found'}")
+                log(f"PRICE REFRESH FAILED {tracked.request.name}: {error or 'card not found'}", level="ERROR")
                 failed += 1
                 report_refresh_progress(progress, total=total, processed=processed, refreshed=refreshed, failed=failed)
                 continue

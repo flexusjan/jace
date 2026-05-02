@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .config import SUPPORTED_CURRENCIES, app_config
 from .importer import import_cards
+from .logs import log
 from .parser import parse_card_file
 from .storage import PriceStore, ReportRow
 
@@ -58,8 +59,8 @@ def track(args: argparse.Namespace, store: PriceStore) -> int:
     requests = parse_card_file(args.cards)
     result = import_cards(requests, store, args.currency)
     for failure in result.failures:
-        print(f"ERROR {failure.name}: {failure.error}", file=sys.stderr)
-    print(f"tracked {result.imported} cards")
+        log(f"ERROR {failure.name}: {failure.error}", level="ERROR", stream=sys.stderr)
+    log(f"tracked {result.imported} cards")
     return 1 if result.failures else 0
 
 

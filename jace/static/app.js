@@ -13,6 +13,17 @@ const state = {
 };
 
 const COLUMN_STORAGE_KEY = "jace.visibleColumns";
+const DEFAULT_VISIBLE_COLUMNS = [
+  "name",
+  "set",
+  "quantity",
+  "condition",
+  "language",
+  "latest_price",
+  "total_price",
+  "change",
+  "latest_captured_at"
+];
 const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short"
@@ -42,6 +53,10 @@ const columns = [
   {
     key: "latest_price",
     render: card => money(card.latest_price, card.currency)
+  },
+  {
+    key: "total_price",
+    render: card => money(totalPrice(card), card.currency)
   },
   {
     key: "change",
@@ -529,7 +544,10 @@ async function deleteSelectedCards() {
 function initializeColumns() {
   const saved = readSavedColumns();
   const allowed = new Set(columns.map(column => column.key));
-  const initial = Array.isArray(saved) ? saved.filter(key => allowed.has(key)) : columns.map(column => column.key);
+  const initial = Array.isArray(saved) ? saved.filter(key => allowed.has(key)) : DEFAULT_VISIBLE_COLUMNS;
+  if (Array.isArray(saved) && !initial.includes("total_price")) {
+    initial.splice(Math.max(initial.indexOf("latest_price") + 1, 0), 0, "total_price");
+  }
   state.visibleColumns = new Set(initial.length > 0 ? initial : columns.map(column => column.key));
   columnToggles.forEach(toggle => {
     toggle.checked = state.visibleColumns.has(toggle.value);
@@ -595,6 +613,10 @@ function sortValue(card, key) {
   if (key === "quantity") {
     return Number(card.quantity || 0);
   }
+  if (key === "total_price") {
+    const value = totalPrice(card);
+    return value === null ? Number.NEGATIVE_INFINITY : value;
+  }
   if (key === "latest_price" || key === "change") {
     const value = card[key];
     return value === null || value === undefined ? Number.NEGATIVE_INFINITY : Number(value);
@@ -613,7 +635,7 @@ function compareValues(left, right) {
 }
 
 function defaultSortDirection(key) {
-  return ["quantity", "latest_price", "change", "latest_captured_at"].includes(key) ? "desc" : "asc";
+  return ["quantity", "latest_price", "total_price", "change", "latest_captured_at"].includes(key) ? "desc" : "asc";
 }
 
 function updateSortButtons() {
@@ -657,6 +679,13 @@ function columnTemplate(column, card) {
 function changeClass(card) {
   const change = Number(card.change || 0);
   return change > 0 ? "gain" : change < 0 ? "loss" : "";
+}
+
+function totalPrice(card) {
+  if (card.latest_price === null || card.latest_price === undefined) {
+    return null;
+  }
+  return Number(card.latest_price) * Number(card.quantity || 0);
 }
 
 function renderDetail(card) {

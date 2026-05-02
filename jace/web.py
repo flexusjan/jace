@@ -17,6 +17,7 @@ from urllib.request import Request, urlopen
 from . import APP_USER_AGENT
 from .config import SUPPORTED_CURRENCIES, app_config
 from .importer import ImportResult, import_cards
+from .logs import log
 from .models import CardRequest
 from .moxfield import MoxfieldClient, MoxfieldError
 from .parser import parse_card_csv, parse_card_text
@@ -80,7 +81,7 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def log_message(self, format: str, *args: Any) -> None:
-        print(f"{self.address_string()} - {format % args}")
+        log(f"{self.address_string()} - {format % args}")
 
     def _handle_import(self) -> None:
         try:
@@ -204,7 +205,7 @@ def serve(host: str, port: int, database_url: str | None) -> int:
     refresher.start()
     handler = type("ConfiguredPriceTrackerHandler", (PriceTrackerHandler,), {"store": store, "jobs": jobs, "refresher": refresher})
     server = ThreadingHTTPServer((host, port), handler)
-    print(f"Serving MTG price tracker on http://{host}:{port}")
+    log(f"Serving MTG price tracker on http://{host}:{port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -330,6 +331,7 @@ class ImportJobs:
         self._update(job_id, status="running")
         store: PriceStore | None = None
         try:
+            log(f"IMPORT JOB STARTED {job_id} total={len(requests)} currency={currency}")
             store = PriceStore(database_url, initialize_schema=False)
             result = import_cards(
                 requests,
@@ -353,8 +355,9 @@ class ImportJobs:
                 current_card=None,
                 failures=[asdict(failure) for failure in result.failures],
             )
+            log(f"IMPORT JOB COMPLETED {job_id} total={result.total} imported={result.imported} failed={len(result.failures)}")
         except Exception as exc:
-            print(f"IMPORT JOB FAILED {job_id}: {exc}")
+            log(f"IMPORT JOB FAILED {job_id}: {exc}", level="ERROR")
             self._update(job_id, status="error", error=str(exc))
         finally:
             if store is not None:
