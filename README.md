@@ -134,6 +134,10 @@ jace report --format csv
 python -m unittest discover -s tests
 ```
 
+## License
+
+MIT, see [LICENSE](LICENSE).
+
 ## Notes
 
 - The data source is Scryfall. Prices can be missing when Scryfall has no price
