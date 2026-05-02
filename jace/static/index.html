@@ -127,6 +127,22 @@
             </thead>
             <tbody id="cards"></tbody>
           </table>
+          <div class="pagination" aria-label="Pagination">
+            <span id="page-status">Page 1 of 1</span>
+            <div class="page-controls">
+              <label>
+                <span>Rows</span>
+                <select id="page-size">
+                  <option value="50">50</option>
+                  <option value="100" selected>100</option>
+                  <option value="250">250</option>
+                  <option value="500">500</option>
+                </select>
+              </label>
+              <button id="page-prev" type="button">Previous</button>
+              <button id="page-next" type="button">Next</button>
+            </div>
+          </div>
         </div>
 
         <aside class="detail" id="detail">

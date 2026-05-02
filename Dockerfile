@@ -12,4 +12,4 @@ COPY examples ./examples
 RUN pip install --no-cache-dir .
 
 ENTRYPOINT ["jace"]
-CMD ["web", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["web", "--host", "0.0.0.0", "--port", "8180"]

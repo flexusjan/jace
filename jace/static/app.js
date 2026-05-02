@@ -4,6 +4,12 @@ const state = {
   query: "",
   sortKey: "name",
   sortDirection: "asc",
+  page: 1,
+  pageSize: 100,
+  totalPages: 1,
+  totalCount: 0,
+  totalValue: null,
+  totalCurrency: "",
   selectedIds: new Set(),
   visibleColumns: new Set(),
   histories: new Map(),
@@ -97,13 +103,20 @@ const columnToggles = document.querySelectorAll("#column-options input[type='che
 const selectAll = document.querySelector("#select-all");
 const selectionCount = document.querySelector("#selection-count");
 const deleteSelected = document.querySelector("#delete-selected");
+const pageStatus = document.querySelector("#page-status");
+const pageSize = document.querySelector("#page-size");
+const pagePrev = document.querySelector("#page-prev");
+const pageNext = document.querySelector("#page-next");
 const ACTIVE_IMPORT_JOB_KEY = "jace.activeImportJobId";
+let searchTimer = null;
 
 initializeColumns();
 priceRefresh.addEventListener("click", refreshPricesNow);
 search.addEventListener("input", event => {
   state.query = event.target.value.toLowerCase();
-  render();
+  state.page = 1;
+  window.clearTimeout(searchTimer);
+  searchTimer = window.setTimeout(loadCards, 180);
 });
 importTabs.forEach(tab => {
   tab.addEventListener("click", () => setImportTab(tab.dataset.importTab));
@@ -115,6 +128,23 @@ sortButtons.forEach(button => {
 columnOptions.addEventListener("change", updateVisibleColumns);
 selectAll.addEventListener("change", toggleVisibleSelection);
 deleteSelected.addEventListener("click", deleteSelectedCards);
+pageSize.addEventListener("change", event => {
+  state.pageSize = Number(event.target.value) || 100;
+  state.page = 1;
+  loadCards();
+});
+pagePrev.addEventListener("click", () => {
+  if (state.page > 1) {
+    state.page -= 1;
+    loadCards();
+  }
+});
+pageNext.addEventListener("click", () => {
+  if (state.page < state.totalPages) {
+    state.page += 1;
+    loadCards();
+  }
+});
 cardsBody.addEventListener("click", event => {
   const checkbox = event.target.closest(".row-select");
   if (checkbox) {
@@ -144,12 +174,31 @@ resumeActiveImport();
 
 async function loadCards() {
   try {
-    const response = await fetch("/api/cards", { cache: "no-store" });
+    const params = new URLSearchParams({
+      page: String(state.page),
+      page_size: String(state.pageSize),
+      q: state.query,
+      sort: state.sortKey,
+      direction: state.sortDirection
+    });
+    const response = await fetch(`/api/cards?${params.toString()}`, { cache: "no-store" });
     if (!response.ok) {
       throw new Error(`Request failed with status ${response.status}`);
     }
     const payload = await response.json();
     state.cards = payload.cards;
+    const pagination = payload.pagination || {};
+    state.page = Number(pagination.page || state.page);
+    state.pageSize = Number(pagination.page_size || state.pageSize);
+    state.totalPages = Number(pagination.total_pages || 1);
+    state.totalCount = Number(pagination.total_count || state.cards.length);
+    state.totalValue = pagination.total_value;
+    state.totalCurrency = pagination.currency || "";
+    if (state.cards.length === 0 && state.page > 1) {
+      state.page -= 1;
+      await loadCards();
+      return;
+    }
     state.histories.clear();
     state.historyErrors.clear();
     state.historyRequests.clear();
@@ -448,32 +497,24 @@ function clearImportInput(source) {
 }
 
 function render() {
-  const sorted = visibleSortedCards();
+  const visible = visibleSortedCards();
 
   updateSortButtons();
   updateColumnVisibility();
-  updateSelectionControls(sorted);
-  renderRows(sorted);
+  updateSelectionControls(visible);
+  updatePaginationControls();
+  renderRows(visible);
 
-  const total = state.cards.reduce((sum, card) => {
-    const price = Number(card.latest_price || 0);
-    return sum + price * card.quantity;
-  }, 0);
-  const currency = state.cards[0]?.currency || "";
-  cardCount.textContent = `${state.cards.length} cards`;
-  portfolioValue.textContent = `${total.toFixed(2)} ${currency}`.trim();
+  cardCount.textContent = `${state.totalCount} cards`;
+  portfolioValue.textContent = state.totalValue === null || state.totalValue === undefined
+    ? "n/a"
+    : `${Number(state.totalValue).toFixed(2)} ${state.totalCurrency}`.trim();
 
-  const selected = state.cards.find(card => card.id === state.selectedId) || sorted[0];
+  const selected = state.cards.find(card => card.id === state.selectedId) || visible[0];
   renderDetail(selected);
 }
 
 function reconcileSelection() {
-  const knownIds = new Set(state.cards.map(card => card.id));
-  state.selectedIds.forEach(id => {
-    if (!knownIds.has(id)) {
-      state.selectedIds.delete(id);
-    }
-  });
   if (state.selectedId && !state.cards.some(card => card.id === state.selectedId)) {
     state.selectedId = state.cards[0]?.id || null;
   }
@@ -494,11 +535,7 @@ function toggleVisibleSelection(event) {
 }
 
 function visibleSortedCards() {
-  const filtered = state.cards.filter(card => {
-    const haystack = `${card.name} ${card.set_code} ${card.collector_number}`.toLowerCase();
-    return haystack.includes(state.query);
-  });
-  return sortCards(filtered);
+  return state.cards;
 }
 
 function updateSelectionControls(visibleCards) {
@@ -589,7 +626,8 @@ function setSort(key) {
     state.sortKey = key;
     state.sortDirection = defaultSortDirection(key);
   }
-  render();
+  state.page = 1;
+  loadCards();
 }
 
 function sortCards(cards) {
@@ -645,6 +683,13 @@ function updateSortButtons() {
     button.setAttribute("aria-sort", active ? (state.sortDirection === "asc" ? "ascending" : "descending") : "none");
     button.dataset.direction = active ? state.sortDirection : "";
   });
+}
+
+function updatePaginationControls() {
+  pageSize.value = String(state.pageSize);
+  pageStatus.textContent = `Page ${state.page} of ${state.totalPages}`;
+  pagePrev.disabled = state.page <= 1;
+  pageNext.disabled = state.page >= state.totalPages;
 }
 
 function renderRows(cards) {

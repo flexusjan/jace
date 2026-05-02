@@ -24,6 +24,8 @@ class FakeCursor:
             self.rowcount = len(parameters[0])
         if "COUNT(DISTINCT" in statement:
             self.rows = [{"deleted": len(parameters[0])}]
+        if "COUNT(*) AS total_count" in statement:
+            self.rows = [{"total_count": 1, "total_value": "4.50", "currency": "EUR"}]
 
     def fetchall(self):
         return self.rows
@@ -182,6 +184,45 @@ class StorageTest(unittest.TestCase):
         self.assertEqual(parameters[0], "entry-1")
         self.assertEqual(history[0].price, Decimal("0.25"))
 
+    def test_latest_page_applies_limit_search_sort_and_summary(self):
+        captured_at = datetime(2026, 2, 1, tzinfo=timezone.utc)
+        connection = FakeConnection(
+            [
+                {
+                    "id": "entry-1",
+                    "scryfall_id": "card-1",
+                    "name": "Lightning Bolt",
+                    "set_code": "sld",
+                    "collector_number": "675",
+                    "source_url": "https://scryfall.com/card/sld/675",
+                    "has_cached_image": False,
+                    "has_image_url": True,
+                    "quantity": 2,
+                    "condition": "NM",
+                    "language": "English",
+                    "currency": "EUR",
+                    "latest_price": "2.25",
+                    "latest_captured_at": captured_at,
+                    "first_price": "1.50",
+                    "first_captured_at": captured_at,
+                }
+            ]
+        )
+        store = PriceStore(connection=connection)
+
+        page = store.latest_page(limit=100, offset=200, search="bolt", sort="total_price", direction="desc")
+
+        page_statement, page_parameters = connection.cursor_instance.statements[-2]
+        summary_statement, summary_parameters = connection.cursor_instance.statements[-1]
+        self.assertIn("ILIKE %s", page_statement)
+        self.assertIn("latest.price * latest.quantity DESC", page_statement)
+        self.assertIn("LIMIT %s OFFSET %s", page_statement)
+        self.assertEqual(page_parameters[-2:], [100, 200])
+        self.assertIn("COUNT(*) AS total_count", summary_statement)
+        self.assertEqual(summary_parameters, ["%bolt%", "%bolt%", "%bolt%"])
+        self.assertEqual(page.rows[0].name, "Lightning Bolt")
+        self.assertEqual(page.total_count, 1)
+        self.assertEqual(page.total_value, Decimal("4.50"))
 
     def test_delete_tracked_cards_removes_only_selected_tracking_entries(self):
         connection = FakeConnection()

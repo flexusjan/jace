@@ -47,10 +47,10 @@ Runtime settings can be overridden in `.env`:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `APP_PORT` | `8000` | Host port exposed by Docker Compose |
+| `APP_PORT` | `8180` | Host port exposed by Docker Compose |
 | `JACE_DEFAULT_CURRENCY` | `eur` | Default import currency (`eur`, `usd`, or `tix`) |
 | `JACE_WEB_HOST` | `0.0.0.0` | Web server bind host |
-| `JACE_WEB_PORT` | `8000` | Web server bind port inside the container |
+| `JACE_WEB_PORT` | `8180` | Web server bind port inside the container |
 | `JACE_REFRESH_INTERVAL_SECONDS` | `3600` | Automatic stale price refresh interval |
 | `JACE_SCRYFALL_BULK_SIZE` | `75` | Scryfall collection request size, max `75` |
 | `JACE_SCRYFALL_REQUEST_INTERVAL_SECONDS` | `0.12` | Delay between regular Scryfall requests |
@@ -61,11 +61,11 @@ Runtime settings can be overridden in `.env`:
 Frontend:
 
 ```text
-http://localhost:8000
+http://localhost:8180
 ```
 
-In the frontend you can add, search, sort, select, and delete cards including
-their price history. Supported import sources are single card lines, `.txt`
+In the frontend you can add, search, sort, page through, select, and delete cards
+including their price history. Supported import sources are single card lines, `.txt`
 files in the same format as [examples/cards.txt](examples/cards.txt), CSV files
 with columns such as `Count`, `Name`, `Edition`, `Collector Number`,
 `Condition`, and `Language`, plus Moxfield deck links. The frontend displays
@@ -102,7 +102,7 @@ reachable and `DATABASE_URL` must point to it:
 docker run --rm \
   --add-host=host.docker.internal:host-gateway \
   -e DATABASE_URL='postgresql://jace:password@host.docker.internal:5432/jace' \
-  -p 8000:8000 \
+  -p 8180:8180 \
   jace:local
 ```
 
@@ -119,7 +119,7 @@ python -m pip install -e .
 export DATABASE_URL='postgresql://jace@localhost:5432/jace'
 jace track examples/cards.txt --currency eur
 jace report
-jace web --host 127.0.0.1 --port 8000
+jace web --host 127.0.0.1 --port 8180
 ```
 
 CLI output as CSV:

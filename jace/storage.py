@@ -71,6 +71,14 @@ class HistoryPoint:
 
 
 @dataclass(frozen=True)
+class ReportPage:
+    rows: list[ReportRow]
+    total_count: int
+    total_value: Decimal | None
+    currency: str | None
+
+
+@dataclass(frozen=True)
 class TrackedCard:
     id: str
     scryfall_id: str
@@ -151,10 +159,44 @@ class PriceStore:
             raise
         return snapshot_entry_id
 
-    def latest_rows(self) -> list[ReportRow]:
+    def latest_rows(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+        search: str = "",
+        sort: str = "name",
+        direction: str = "asc",
+    ) -> list[ReportRow]:
+        return self.latest_page(limit=limit, offset=offset, search=search, sort=sort, direction=direction).rows
+
+    def latest_page(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+        search: str = "",
+        sort: str = "name",
+        direction: str = "asc",
+    ) -> ReportPage:
+        order_by = report_order_by(sort, direction)
+        filter_sql = ""
+        parameters: list[Any] = []
+        if search:
+            filter_sql = """
+                WHERE c.name ILIKE %s
+                   OR c.set_code ILIKE %s
+                   OR c.collector_number ILIKE %s
+            """
+            pattern = f"%{search}%"
+            parameters.extend([pattern, pattern, pattern])
+        page_sql = ""
+        if limit is not None:
+            page_sql = "LIMIT %s OFFSET %s"
+            parameters.extend([limit, max(offset, 0)])
         with self.connection.cursor() as cursor:
             cursor.execute(
-                """
+                f"""
                 WITH latest AS (
                     SELECT DISTINCT ON (entry_id)
                         entry_id, scryfall_id, quantity, condition, language, currency, price, captured_at
@@ -187,12 +229,40 @@ class PriceStore:
                 FROM latest
                 JOIN cards c ON c.scryfall_id = latest.scryfall_id
                 LEFT JOIN first ON first.entry_id = latest.entry_id
-                ORDER BY c.name COLLATE "C", c.set_code COLLATE "C", c.collector_number COLLATE "C", latest.condition COLLATE "C", latest.language COLLATE "C"
-                """
+                {filter_sql}
+                ORDER BY {order_by}
+                {page_sql}
+                """,
+                parameters,
             )
             rows = [row_to_report(row) for row in cursor.fetchall()]
+            cursor.execute(
+                f"""
+                WITH latest AS (
+                    SELECT DISTINCT ON (entry_id)
+                        entry_id, scryfall_id, quantity, currency, price
+                    FROM price_snapshots
+                    ORDER BY entry_id, captured_at DESC, id DESC
+                )
+                SELECT
+                    COUNT(*) AS total_count,
+                    SUM(latest.price * latest.quantity) AS total_value,
+                    CASE WHEN COUNT(DISTINCT latest.currency) = 1 THEN MIN(latest.currency) ELSE NULL END AS currency
+                FROM latest
+                JOIN cards c ON c.scryfall_id = latest.scryfall_id
+                {filter_sql}
+                """,
+                parameters[:3] if search else [],
+            )
+            summary_rows = cursor.fetchall()
         self.connection.commit()
-        return rows
+        summary = dict(summary_rows[0]) if summary_rows else {}
+        return ReportPage(
+            rows=rows,
+            total_count=int(summary.get("total_count") or 0),
+            total_value=decimal_or_none(summary.get("total_value")),
+            currency=summary.get("currency"),
+        )
 
     def image_info(self, scryfall_id: str) -> dict[str, Any] | None:
         with self.connection.cursor() as cursor:
@@ -493,6 +563,27 @@ def row_to_tracked_card(row: Any) -> TrackedCard:
 
 def schema_statements() -> list[str]:
     return [statement.strip() for statement in SCHEMA.split(";") if statement.strip()]
+
+
+def report_order_by(sort: str, direction: str) -> str:
+    sort_columns = {
+        "name": ['c.name COLLATE "C"'],
+        "set": ['c.set_code COLLATE "C"', 'c.collector_number COLLATE "C"'],
+        "quantity": "latest.quantity",
+        "condition": 'latest.condition COLLATE "C"',
+        "language": 'latest.language COLLATE "C"',
+        "latest_price": "latest.price",
+        "total_price": "latest.price * latest.quantity",
+        "change": "latest.price - first.price",
+        "latest_captured_at": "latest.captured_at",
+    }
+    primary = sort_columns.get(sort, sort_columns["name"])
+    sql_direction = "DESC" if direction == "desc" else "ASC"
+    nulls = "NULLS LAST"
+    primary_columns = primary if isinstance(primary, list) else [primary]
+    primary_order = ", ".join(f"{column} {sql_direction} {nulls}" for column in primary_columns)
+    tie_breaker = 'c.name COLLATE "C" ASC, c.set_code COLLATE "C" ASC, c.collector_number COLLATE "C" ASC, latest.condition COLLATE "C" ASC, latest.language COLLATE "C" ASC'
+    return f"{primary_order}, {tie_breaker}"
 
 
 def decimal_or_none(value: Any) -> Decimal | None:

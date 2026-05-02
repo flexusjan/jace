@@ -520,6 +520,39 @@ tbody tr.selected {
   box-shadow: inset 4px 0 0 var(--accent);
 }
 
+.pagination {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  color: var(--muted);
+  background: rgb(251 253 255 / 96%);
+  border-top: 1px solid var(--line);
+  font-weight: 700;
+}
+
+.page-controls {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+}
+
+.page-controls label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.page-controls select {
+  width: 92px;
+}
+
 .card-name {
   min-width: 220px;
   white-space: normal;
@@ -586,6 +619,12 @@ tbody tr.selected {
 
   .summary {
     flex-wrap: wrap;
+  }
+
+  .pagination,
+  .page-controls {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .table-wrap {

@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 from urllib.request import Request, urlopen
 
 from . import APP_USER_AGENT
@@ -45,7 +45,20 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
             self._send_file(STATIC_DIR / "app.js", "application/javascript; charset=utf-8")
             return
         if path == "/api/cards":
-            self._send_json(cards_payload(self.store.latest_rows()))
+            params = parse_qs(urlparse(self.path).query)
+            page = query_int(params, "page", 1, minimum=1)
+            page_size = query_int(params, "page_size", 100, minimum=1, maximum=500)
+            sort = query_str(params, "sort", "name")
+            direction = query_str(params, "direction", "asc")
+            search = query_str(params, "q", "")
+            report = self.store.latest_page(
+                limit=page_size,
+                offset=(page - 1) * page_size,
+                search=search,
+                sort=sort,
+                direction=direction,
+            )
+            self._send_json(cards_payload(report.rows, pagination=report_pagination_payload(report, page, page_size)))
             return
         if path.startswith("/api/cards/") and path.endswith("/history"):
             entry_id = unquote(path.removeprefix("/api/cards/").removesuffix("/history"))
@@ -217,8 +230,12 @@ def serve(host: str, port: int, database_url: str | None) -> int:
     return 0
 
 
-def cards_payload(rows: list[ReportRow], history: dict[str, list[HistoryPoint]] | None = None) -> dict[str, Any]:
-    return {
+def cards_payload(
+    rows: list[ReportRow],
+    history: dict[str, list[HistoryPoint]] | None = None,
+    pagination: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload = {
         "cards": [
             {
                 **asdict(row),
@@ -245,6 +262,41 @@ def cards_payload(rows: list[ReportRow], history: dict[str, list[HistoryPoint]] 
             for row in rows
         ]
     }
+    if pagination is not None:
+        payload["pagination"] = pagination
+    return payload
+
+
+def report_pagination_payload(report: Any, page: int, page_size: int) -> dict[str, Any]:
+    total_pages = max(1, (report.total_count + page_size - 1) // page_size)
+    return {
+        "page": min(page, total_pages),
+        "page_size": page_size,
+        "total_count": report.total_count,
+        "total_pages": total_pages,
+        "total_value": decimal_to_string(report.total_value),
+        "currency": report.currency,
+    }
+
+
+def query_str(params: dict[str, list[str]], name: str, default: str) -> str:
+    values = params.get(name)
+    return values[0].strip() if values and values[0].strip() else default
+
+
+def query_int(params: dict[str, list[str]], name: str, default: int, *, minimum: int, maximum: int | None = None) -> int:
+    values = params.get(name)
+    if not values:
+        return default
+    try:
+        value = int(values[0])
+    except ValueError:
+        return default
+    if value < minimum:
+        return minimum
+    if maximum is not None and value > maximum:
+        return maximum
+    return value
 
 
 def card_history_payload(history: list[HistoryPoint]) -> dict[str, Any]:

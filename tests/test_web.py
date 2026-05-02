@@ -3,8 +3,8 @@ from decimal import Decimal
 import unittest
 
 from jace.refresher import RefreshStatus, refresh_status_payload
-from jace.storage import HistoryPoint, ReportRow
-from jace.web import card_history_payload, cards_payload, import_payload, import_requests_from_payload
+from jace.storage import HistoryPoint, ReportPage, ReportRow
+from jace.web import card_history_payload, cards_payload, import_payload, import_requests_from_payload, report_pagination_payload
 from jace.importer import ImportFailure, ImportResult
 
 
@@ -74,6 +74,17 @@ class WebPayloadTest(unittest.TestCase):
         payload = cards_payload([row])
 
         self.assertNotIn("history", payload["cards"][0])
+
+    def test_cards_payload_includes_pagination_metadata(self):
+        page = ReportPage(rows=[], total_count=201, total_value=Decimal("12.50"), currency="EUR")
+
+        payload = cards_payload([], pagination=report_pagination_payload(page, page=2, page_size=100))
+
+        self.assertEqual(payload["pagination"]["page"], 2)
+        self.assertEqual(payload["pagination"]["page_size"], 100)
+        self.assertEqual(payload["pagination"]["total_count"], 201)
+        self.assertEqual(payload["pagination"]["total_pages"], 3)
+        self.assertEqual(payload["pagination"]["total_value"], "12.50")
 
     def test_card_history_payload_formats_points(self):
         payload = card_history_payload(
