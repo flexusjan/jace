@@ -3,17 +3,17 @@ requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "jace-the-price-tracker"
+name = "jace"
 version = "0.1.0"
 description = "Track Magic: The Gathering card prices with Scryfall snapshots."
 requires-python = ">=3.11"
 dependencies = ["psycopg[binary]>=3.2,<4"]
 
 [project.scripts]
-mtg-price-tracker = "mtg_price_tracker.cli:main"
+jace = "jace.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["mtg_price_tracker*"]
+include = ["jace*"]
 
 [tool.setuptools.package-data]
-mtg_price_tracker = ["static/*"]
+jace = ["static/*"]

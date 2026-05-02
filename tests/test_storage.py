@@ -2,8 +2,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 import unittest
 
-from mtg_price_tracker.models import CardPrice, CardRequest
-from mtg_price_tracker.storage import PriceStore, decimal_or_none, row_to_report
+from jace.models import CardPrice, CardRequest
+from jace.storage import PriceStore, decimal_or_none, row_to_report
 
 
 class FakeCursor:

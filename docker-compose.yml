@@ -3,8 +3,8 @@ services:
     image: ${POSTGRES_IMAGE:-postgres:18-alpine}
     container_name: jace-postgres
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-mtg_prices}
-      POSTGRES_USER: ${POSTGRES_USER:-mtg_tracker}
+      POSTGRES_DB: ${POSTGRES_DB:-jace}
+      POSTGRES_USER: ${POSTGRES_USER:-jace}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in a local .env file}
     volumes:
       - postgres18_root:/var/lib/postgresql
@@ -21,7 +21,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-mtg_tracker}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-mtg_prices}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-jace}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-jace}
       JACE_DEFAULT_CURRENCY: ${JACE_DEFAULT_CURRENCY:-eur}
       JACE_WEB_HOST: ${JACE_WEB_HOST:-0.0.0.0}
       JACE_WEB_PORT: ${JACE_WEB_PORT:-8000}

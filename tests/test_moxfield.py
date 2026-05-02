@@ -1,6 +1,6 @@
 import unittest
 
-from mtg_price_tracker.moxfield import MoxfieldError, cards_from_deck, extract_deck_id
+from jace.moxfield import MoxfieldError, cards_from_deck, extract_deck_id
 
 
 class MoxfieldTest(unittest.TestCase):

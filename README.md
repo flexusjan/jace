@@ -1,4 +1,4 @@
-# Jace, the Price Tracker
+# jace
 
 A small tool that reads a list of Magic: The Gathering cards, fetches current
 prices from the public Scryfall API, and stores snapshots in Postgres. Price
@@ -37,7 +37,7 @@ The stack starts exactly two containers:
 
 Portainer does not need a local build. The app container uses the image from
 `JACE_IMAGE`. Set it to the full image name that Portainer should deploy, for
-example `registry.example.com/jace-the-price-tracker:latest`.
+example `registry.example.com/jace:latest`.
 
 The Postgres container uses `postgres:18-alpine` by default. The Compose volume
 is mounted at `/var/lib/postgresql` so it matches the data directory layout used
@@ -86,13 +86,13 @@ docker compose run --rm jace report
 If Docker is installed, you can build the image without Docker Compose:
 
 ```bash
-docker build -t jace-the-price-tracker:local .
+docker build -t jace:local .
 ```
 
 Then start the Compose stack with the locally built image:
 
 ```bash
-JACE_IMAGE=jace-the-price-tracker:local docker compose up -d
+JACE_IMAGE=jace:local docker compose up -d
 ```
 
 The container can also be started directly. A Postgres database must be
@@ -101,9 +101,9 @@ reachable and `DATABASE_URL` must point to it:
 ```bash
 docker run --rm \
   --add-host=host.docker.internal:host-gateway \
-  -e DATABASE_URL='postgresql://mtg_tracker:password@host.docker.internal:5432/mtg_prices' \
+  -e DATABASE_URL='postgresql://jace:password@host.docker.internal:5432/jace' \
   -p 8000:8000 \
-  jace-the-price-tracker:local
+  jace:local
 ```
 
 `--add-host=host.docker.internal:host-gateway` makes the host machine reachable
@@ -116,16 +116,16 @@ Postgres must be reachable and `DATABASE_URL` must be set.
 
 ```bash
 python -m pip install -e .
-export DATABASE_URL='postgresql://mtg_tracker@localhost:5432/mtg_prices'
-mtg-price-tracker track examples/cards.txt --currency eur
-mtg-price-tracker report
-mtg-price-tracker web --host 127.0.0.1 --port 8000
+export DATABASE_URL='postgresql://jace@localhost:5432/jace'
+jace track examples/cards.txt --currency eur
+jace report
+jace web --host 127.0.0.1 --port 8000
 ```
 
 CLI output as CSV:
 
 ```bash
-mtg-price-tracker report --format csv
+jace report --format csv
 ```
 
 ## Tests

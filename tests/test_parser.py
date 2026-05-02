@@ -1,6 +1,6 @@
 import unittest
 
-from mtg_price_tracker.parser import parse_card_csv, parse_card_line, parse_card_text
+from jace.parser import parse_card_csv, parse_card_line, parse_card_text
 
 
 class ParserTest(unittest.TestCase):

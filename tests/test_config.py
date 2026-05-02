@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from mtg_price_tracker.config import app_config
+from jace.config import app_config
 
 
 class ConfigTest(unittest.TestCase):

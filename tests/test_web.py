@@ -2,10 +2,10 @@ from datetime import datetime, timezone
 from decimal import Decimal
 import unittest
 
-from mtg_price_tracker.refresher import RefreshStatus, refresh_status_payload
-from mtg_price_tracker.storage import HistoryPoint, ReportRow
-from mtg_price_tracker.web import card_history_payload, cards_payload, import_payload, import_requests_from_payload
-from mtg_price_tracker.importer import ImportFailure, ImportResult
+from jace.refresher import RefreshStatus, refresh_status_payload
+from jace.storage import HistoryPoint, ReportRow
+from jace.web import card_history_payload, cards_payload, import_payload, import_requests_from_payload
+from jace.importer import ImportFailure, ImportResult
 
 
 class WebPayloadTest(unittest.TestCase):

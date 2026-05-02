@@ -14,6 +14,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import unquote, urlparse
 from urllib.request import Request, urlopen
 
+from . import APP_USER_AGENT
 from .config import SUPPORTED_CURRENCIES, app_config
 from .importer import ImportResult, import_cards
 from .models import CardRequest
@@ -372,7 +373,7 @@ class ImageFetchError(RuntimeError):
 
 def fetch_image(url: str) -> tuple[str, bytes]:
     config = app_config()
-    request = Request(url, headers={"User-Agent": "jace-the-price-tracker/0.1.0", "Accept": "image/*"})
+    request = Request(url, headers={"User-Agent": APP_USER_AGENT, "Accept": "image/*"})
     try:
         with urlopen(request, timeout=config.image_fetch_timeout_seconds) as response:
             content_type = response.headers.get_content_type() or "image/jpeg"

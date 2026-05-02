@@ -6,10 +6,10 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 COPY pyproject.toml README.md ./
-COPY mtg_price_tracker ./mtg_price_tracker
+COPY jace ./jace
 COPY examples ./examples
 
 RUN pip install --no-cache-dir .
 
-ENTRYPOINT ["mtg-price-tracker"]
+ENTRYPOINT ["jace"]
 CMD ["web", "--host", "0.0.0.0", "--port", "8000"]

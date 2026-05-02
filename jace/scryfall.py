@@ -9,6 +9,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
+from . import APP_USER_AGENT
 from .config import (
     DEFAULT_SCRYFALL_BASE_URL,
     DEFAULT_SCRYFALL_BULK_SIZE,
@@ -19,7 +20,6 @@ from .config import (
 )
 from .models import CardPrice, CardRequest
 
-USER_AGENT = "jace-the-price-tracker/0.1.0"
 BASE_URL = DEFAULT_SCRYFALL_BASE_URL
 COLLECTION_BATCH_SIZE = DEFAULT_SCRYFALL_BULK_SIZE
 DEFAULT_REQUEST_INTERVAL_SECONDS = DEFAULT_SCRYFALL_REQUEST_INTERVAL_SECONDS
@@ -162,7 +162,7 @@ class ScryfallClient:
         url = f"{self.base_url}{path}"
         if params:
             url = f"{url}?{urlencode(params)}"
-        headers = {"User-Agent": USER_AGENT, "Accept": "application/json;q=0.9,*/*;q=0.8"}
+        headers = {"User-Agent": APP_USER_AGENT, "Accept": "application/json;q=0.9,*/*;q=0.8"}
         data = None
         if body is not None:
             headers["Content-Type"] = "application/json"

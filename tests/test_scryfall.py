@@ -1,8 +1,8 @@
 import unittest
 from unittest.mock import patch
 
-from mtg_price_tracker.models import CardRequest
-from mtg_price_tracker.scryfall import (
+from jace.models import CardRequest
+from jace.scryfall import (
     ScryfallClient,
     card_image_url,
     chunks,

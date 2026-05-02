@@ -1,8 +1,8 @@
 from decimal import Decimal
 import unittest
 
-from mtg_price_tracker.importer import import_cards
-from mtg_price_tracker.models import CardPrice, CardRequest
+from jace.importer import import_cards
+from jace.models import CardPrice, CardRequest
 
 
 class FakeClient:

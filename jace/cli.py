@@ -14,7 +14,7 @@ from .storage import PriceStore, ReportRow
 
 def build_parser() -> argparse.ArgumentParser:
     config = app_config()
-    parser = argparse.ArgumentParser(prog="mtg-price-tracker")
+    parser = argparse.ArgumentParser(prog="jace")
     parser.add_argument("--database-url", help="Postgres connection URL. Defaults to DATABASE_URL.")
 
     subparsers = parser.add_subparsers(dest="command", required=True)

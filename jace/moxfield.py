@@ -6,10 +6,10 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
+from . import APP_USER_AGENT
 from .models import CardRequest
 
 BASE_URL = "https://api2.moxfield.com"
-USER_AGENT = "jace-the-price-tracker/0.1.0"
 
 
 class MoxfieldError(RuntimeError):
@@ -34,7 +34,7 @@ class MoxfieldClient:
         request = Request(
             url,
             headers={
-                "User-Agent": USER_AGENT,
+                "User-Agent": APP_USER_AGENT,
                 "Accept": "application/json",
             },
         )
