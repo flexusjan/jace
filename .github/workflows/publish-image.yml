@@ -1,0 +1,86 @@
+name: Publish Docker image
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without leading v"
+        required: true
+        default: "1.0.0"
+      push_latest:
+        description: "Also publish the latest tag"
+        type: boolean
+        required: true
+        default: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: Build and publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve release version
+        id: release
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            version="${{ inputs.version }}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+
+          if [[ ! "$version" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]]; then
+            echo "Invalid release version: $version" >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Check out release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+
+      - name: Log in to GHCR
+        shell: bash
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build image
+        shell: bash
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/jace"
+          version="${{ steps.release.outputs.version }}"
+
+          tags=(
+            --tag "$image:$version"
+            --tag "$image:v$version"
+          )
+
+          if [[ "${{ github.event_name }}" != "workflow_dispatch" || "${{ inputs.push_latest }}" == "true" ]]; then
+            tags+=(--tag "$image:latest")
+          fi
+
+          docker build "${tags[@]}" .
+
+      - name: Publish image
+        shell: bash
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/jace"
+          version="${{ steps.release.outputs.version }}"
+
+          docker push "$image:$version"
+          docker push "$image:v$version"
+
+          if [[ "${{ github.event_name }}" != "workflow_dispatch" || "${{ inputs.push_latest }}" == "true" ]]; then
+            docker push "$image:latest"
+          fi
