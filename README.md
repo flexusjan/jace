@@ -1,22 +1,19 @@
 # jace
 
-A small tool that reads a list of Magic: The Gathering cards, fetches current
-prices from the public Scryfall API, and stores snapshots in Postgres. Price
-history can be viewed from the terminal or in the browser.
+jace tracks Magic: The Gathering card prices. It reads card lists, fetches
+current prices from the public Scryfall API, stores snapshots in Postgres, and
+shows the price history in the browser or terminal.
 
-## Card List
+## Features
 
-Supported formats:
+- Import card lists from text, CSV, single card entries, and Moxfield deck links.
+- Store price snapshots in Postgres.
+- View, search, sort, page through, select, and delete cards in the browser.
+- Cache Scryfall artwork in Postgres.
+- Refresh stale prices automatically or manually from the frontend.
+- Run as a Docker Compose stack, standalone container, local web server, or CLI.
 
-```text
-Card Name
-2 Card Name (SET) CollectorNumber
-Card Name [SET]
-```
-
-Example: [examples/cards.txt](examples/cards.txt)
-
-## Docker Compose / Portainer
+## Quick Start With Docker Compose
 
 Create a local `.env` file. This file is ignored by Git.
 
@@ -24,21 +21,38 @@ Create a local `.env` file. This file is ignored by Git.
 cp .env.example .env
 ```
 
-Set at least `POSTGRES_PASSWORD` in `.env`, then start the stack:
+Set at least `POSTGRES_PASSWORD` in `.env`:
 
 ```env
 POSTGRES_PASSWORD=change-me
 ```
 
-To protect the browser frontend and API with HTTP Basic Auth, also set both auth
-variables:
+Start the stack:
 
-```env
-JACE_AUTH_USERNAME=jace
-JACE_AUTH_PASSWORD=beleren
+```bash
+docker compose up -d
 ```
 
-Required and commonly set variables:
+Open the frontend:
+
+```text
+http://localhost:8180
+```
+
+The stack starts two containers:
+
+- `jace-postgres` with Postgres
+- `jace` with the web app
+
+The app image defaults to `ghcr.io/flexusjan/jace:latest`. The Postgres image
+defaults to `postgres:18-alpine`.
+
+For Portainer, deploy the Compose stack and set the same environment variables
+there. No local image build is required.
+
+## Required Environment
+
+Only `POSTGRES_PASSWORD` is required for the Docker Compose stack to start.
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
@@ -46,23 +60,20 @@ Required and commonly set variables:
 | `JACE_AUTH_USERNAME` | no | Enables HTTP Basic Auth when set together with `JACE_AUTH_PASSWORD` |
 | `JACE_AUTH_PASSWORD` | no | HTTP Basic Auth password |
 
-```bash
-docker compose up -d
+To protect the browser frontend and API with HTTP Basic Auth, set both auth
+variables:
+
+```env
+JACE_AUTH_USERNAME=jace
+JACE_AUTH_PASSWORD=beleren
 ```
 
-The stack starts exactly two containers:
+Use Basic Auth behind HTTPS when the app is reachable outside a trusted private
+network.
 
-- `jace-postgres` with Postgres
-- `jace` with the web app
+## Configuration
 
-Portainer does not need a local build. The app container uses the image from
-`JACE_IMAGE`, which defaults to `ghcr.io/flexusjan/jace:latest`.
-
-The Postgres container uses `postgres:18-alpine` by default. The Compose volume
-is mounted at `/var/lib/postgresql` so it matches the data directory layout used
-by the official Postgres 18 images.
-
-Runtime settings can be overridden in `.env`:
+Runtime settings can be overridden in `.env`.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -88,30 +99,34 @@ Runtime settings can be overridden in `.env`:
 | `JACE_MAX_IMPORT_JOBS` | `4` | Maximum queued/running import jobs |
 | `JACE_MAX_IMAGE_BYTES` | `10485760` | Maximum cached Scryfall image size |
 
-Set both `JACE_AUTH_USERNAME` and `JACE_AUTH_PASSWORD` to protect the browser
-frontend and API with HTTP Basic Auth. Basic Auth should be used behind HTTPS
-when the app is reachable outside a trusted private network.
+When Basic Auth is enabled, mutating browser requests are accepted only from the
+same origin. The web server also sends defensive browser headers, limits request
+and image sizes, and only caches card images from HTTPS Scryfall image hosts.
 
-When Basic Auth is enabled, mutating browser requests are accepted only from
-the same origin. The web server also sends defensive browser headers, limits
-request and image sizes, and only caches card images from HTTPS Scryfall image
-hosts.
+## Import Formats
 
-Frontend:
+Text files support these formats:
 
 ```text
-http://localhost:8180
+Card Name
+2 Card Name (SET) CollectorNumber
+Card Name [SET]
 ```
 
-In the frontend you can add, search, sort, page through, select, and delete cards
-including their price history. Supported import sources are single card lines, `.txt`
-files in the same format as [examples/cards.txt](examples/cards.txt), CSV files
-with columns such as `Count`, `Name`, `Edition`, `Collector Number`,
-`Condition`, and `Language`, plus Moxfield deck links. The frontend displays
-Scryfall artwork and caches it in Postgres.
+Example: [examples/cards.txt](examples/cards.txt)
 
-The web server automatically refreshes prices for stale entries about once per
-hour. A full refresh can also be started manually with `Update Prices` in the
+The frontend also accepts single card entries, Moxfield deck links, and CSV
+files with columns such as `Count`, `Name`, `Edition`, `Collector Number`,
+`Condition`, and `Language`.
+
+## Using The App
+
+Import cards in the browser, then use the frontend to search, sort, page through,
+select, and delete cards including their price history. Prices can be missing
+when Scryfall has no price data for a card in the selected currency.
+
+The web server automatically refreshes stale prices about once per hour by
+default. A full refresh can also be started manually with `Update Prices` in the
 frontend.
 
 Show the terminal report:
@@ -120,15 +135,21 @@ Show the terminal report:
 docker compose run --rm jace report
 ```
 
+Show the terminal report as CSV:
+
+```bash
+docker compose run --rm jace report --format csv
+```
+
 ## Build The Container
 
-If Docker is installed, you can build the image without Docker Compose:
+Build a local image:
 
 ```bash
 docker build -t jace:local .
 ```
 
-Then start the Compose stack with the locally built image:
+Start the Compose stack with the local image:
 
 ```bash
 JACE_IMAGE=jace:local docker compose up -d
@@ -142,7 +163,7 @@ docker run --rm \
   --add-host=host.docker.internal:host-gateway \
   -e DATABASE_URL='postgresql://jace:password@host.docker.internal:5432/jace' \
   -p 8180:8180 \
-  jace:local
+  ghcr.io/flexusjan/jace:latest
 ```
 
 `--add-host=host.docker.internal:host-gateway` makes the host machine reachable
@@ -155,17 +176,13 @@ Postgres must be reachable and `DATABASE_URL` must be set.
 
 ```bash
 python -m pip install -e .
-export DATABASE_URL='postgresql://jace@localhost:5432/jace'
+export DATABASE_URL='postgresql://jace:password@localhost:5432/jace'
 jace track examples/cards.txt --currency eur
 jace report
 jace web --host 127.0.0.1 --port 8180
 ```
 
-CLI output as CSV:
-
-```bash
-jace report --format csv
-```
+`jace track` requires network access because it calls Scryfall.
 
 ## Tests
 
@@ -176,11 +193,3 @@ python -m unittest discover -s tests
 ## License
 
 MIT, see [LICENSE](LICENSE).
-
-## Notes
-
-- The data source is Scryfall. Prices can be missing when Scryfall has no price
-  data for a card in the selected currency.
-- `track` requires network access.
-- Real passwords belong in local `.env` files or secret stores, not in the
-  repository.
