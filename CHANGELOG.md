@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.6 - 2026-05-04
+
+- Re-publish the Docker image release using the configured `GHCR_TOKEN` package write credentials.
+
 ## 1.0.5 - 2026-05-03
 
 - Make the Docker image publish workflow compatible with a `GHCR_TOKEN` secret and attach repository metadata labels to published images.
