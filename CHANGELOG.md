@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.2 - 2026-05-03
+
+- Improve the smartphone layout by replacing the wide card table with compact mobile card rows that include card thumbnails and key price details.
+- Allow the mobile page to scroll vertically so the collection list and card images remain reachable on small screens.
+
 ## 1.0.1 - 2026-05-03
 
 - Treat browser or proxy disconnects during HTTP response writes as normal client disconnects instead of logging noisy `BrokenPipeError` tracebacks.

@@ -733,6 +733,7 @@ function rowTemplate(card) {
       <td class="select-column">
         <input class="row-select" type="checkbox" value="${escapeHtml(card.id)}" aria-label="Select ${escapeHtml(card.name)}" ${checked}>
       </td>
+      <td class="mobile-card-thumb">${cardThumb(card)}</td>
       ${columns.map(column => columnTemplate(column, card)).join("")}
     </tr>
   `;
@@ -741,7 +742,7 @@ function rowTemplate(card) {
 function columnTemplate(column, card) {
   const hidden = state.visibleColumns.has(column.key) ? "" : " column-hidden";
   const extraClass = typeof column.className === "function" ? column.className(card) : column.className || "";
-  return `<td class="${extraClass}${hidden}" data-column="${column.key}">${column.render(card)}</td>`;
+  return `<td class="${extraClass}${hidden}" data-column="${column.key}" data-label="${columnLabel(column.key)}">${column.render(card)}</td>`;
 }
 
 function changeClass(card) {
@@ -864,6 +865,28 @@ function cardImage(card) {
       <img class="card-image" src="/api/card-images/${encodeURIComponent(card.scryfall_id)}" alt="${escapeHtml(card.name)}">
     </div>
   `;
+}
+
+function cardThumb(card) {
+  if (!card.has_image_url && !card.has_cached_image) {
+    return `<div class="mobile-card-thumb-placeholder" aria-hidden="true"></div>`;
+  }
+  return `<img src="/api/card-images/${encodeURIComponent(card.scryfall_id)}" alt="" loading="lazy">`;
+}
+
+function columnLabel(key) {
+  const labels = {
+    name: "Card",
+    set: "Set",
+    quantity: "Qty",
+    condition: "Condition",
+    language: "Language",
+    latest_price: "Latest",
+    total_price: "Total",
+    change: "Change",
+    latest_captured_at: "Captured"
+  };
+  return labels[key] || key;
 }
 
 function chartSvg(points, currency) {

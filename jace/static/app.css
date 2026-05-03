@@ -516,6 +516,10 @@ td {
   text-align: center;
 }
 
+.mobile-card-thumb {
+  display: none;
+}
+
 th {
   color: var(--muted);
   font-size: 0.76rem;
@@ -677,10 +681,25 @@ tbody tr.selected {
 }
 
 @media (max-width: 720px) {
+  html,
+  body {
+    height: auto;
+    min-height: 100%;
+  }
+
+  body {
+    min-height: 100dvh;
+    overflow: auto;
+  }
+
   .shell {
     width: 100vw;
+    height: auto;
+    min-height: 100dvh;
     padding: 10px;
     gap: 8px;
+    overflow: visible;
+    grid-template-rows: auto;
   }
 
   .topbar {
@@ -732,20 +751,166 @@ tbody tr.selected {
   }
 
   .layout {
-    grid-template-rows: minmax(0, 1fr) minmax(150px, 28vh);
+    display: flex;
+    flex-direction: column;
+    grid-template-rows: none;
   }
 
   .table-wrap {
-    overflow: auto;
+    overflow: visible;
+  }
+
+  .table-scroll {
+    overflow: visible;
+  }
+
+  table,
+  tbody,
+  tr,
+  td {
+    display: block;
   }
 
   table {
-    min-width: 720px;
+    min-width: 0;
   }
 
-  th,
-  td {
+  thead {
+    display: none;
+  }
+
+  tbody {
+    display: grid;
+    gap: 10px;
     padding: 10px;
+  }
+
+  tbody tr {
+    display: grid;
+    grid-template-columns: 28px 68px minmax(0, 1fr);
+    grid-template-areas:
+      "select thumb name"
+      ". thumb set"
+      ". thumb latest"
+      "meta meta meta";
+    gap: 6px 10px;
+    padding: 10px;
+    background: var(--panel-tint);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+
+  tbody tr.selected {
+    box-shadow: inset 4px 0 0 var(--accent);
+  }
+
+  td {
+    padding: 0;
+    border-bottom: 0;
+    white-space: normal;
+  }
+
+  .select-column {
+    grid-area: select;
+    width: auto;
+    min-width: 0;
+    padding-top: 2px;
+    text-align: left;
+  }
+
+  .mobile-card-thumb {
+    display: block;
+    grid-area: thumb;
+  }
+
+  .mobile-card-thumb img,
+  .mobile-card-thumb-placeholder {
+    display: block;
+    width: 68px;
+    aspect-ratio: 5 / 7;
+    object-fit: cover;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+  }
+
+  td[data-column="name"] {
+    grid-area: name;
+    min-width: 0;
+    font-size: 1rem;
+    line-height: 1.2;
+  }
+
+  td[data-column="set"] {
+    grid-area: set;
+    color: var(--muted);
+    font-size: 0.88rem;
+  }
+
+  td[data-column="latest_price"] {
+    grid-area: latest;
+    color: var(--accent-strong);
+    font-weight: 900;
+  }
+
+  td[data-column="quantity"],
+  td[data-column="condition"],
+  td[data-column="language"],
+  td[data-column="total_price"],
+  td[data-column="change"],
+  td[data-column="latest_captured_at"] {
+    display: grid;
+    grid-template-columns: minmax(82px, auto) minmax(0, 1fr);
+    gap: 8px;
+    align-items: baseline;
+    font-size: 0.84rem;
+  }
+
+  td[data-column="quantity"]::before,
+  td[data-column="condition"]::before,
+  td[data-column="language"]::before,
+  td[data-column="total_price"]::before,
+  td[data-column="change"]::before,
+  td[data-column="latest_captured_at"]::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  td[data-column="quantity"] {
+    grid-column: 1 / -1;
+    grid-row: 4;
+  }
+
+  td[data-column="condition"] {
+    grid-column: 1 / -1;
+    grid-row: 5;
+  }
+
+  td[data-column="language"] {
+    grid-column: 1 / -1;
+    grid-row: 6;
+  }
+
+  td[data-column="total_price"] {
+    grid-column: 1 / -1;
+    grid-row: 7;
+  }
+
+  td[data-column="change"] {
+    grid-column: 1 / -1;
+    grid-row: 8;
+  }
+
+  td[data-column="latest_captured_at"] {
+    grid-column: 1 / -1;
+    grid-row: 9;
+  }
+
+  .column-hidden {
+    display: none !important;
   }
 
   .pagination,
@@ -756,5 +921,10 @@ tbody tr.selected {
 
   .detail {
     padding: 12px;
+    overflow: visible;
+  }
+
+  .card-image {
+    width: min(100%, 220px);
   }
 }
