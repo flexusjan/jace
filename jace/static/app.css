@@ -574,6 +574,20 @@ tbody tr.selected {
   box-shadow: inset 4px 0 0 var(--accent);
 }
 
+.empty-row {
+  cursor: default;
+}
+
+.empty-row td {
+  padding: 28px 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.empty-row:hover {
+  background: transparent;
+}
+
 .pagination {
   display: flex;
   justify-content: space-between;
@@ -800,6 +814,14 @@ tbody tr.selected {
     border-radius: var(--radius);
   }
 
+  tbody tr.empty-row {
+    display: block;
+  }
+
+  .empty-row td {
+    padding: 18px 10px;
+  }
+
   tbody tr.selected {
     box-shadow: inset 4px 0 0 var(--accent);
   }
@@ -856,6 +878,7 @@ tbody tr.selected {
   td[data-column="quantity"],
   td[data-column="condition"],
   td[data-column="language"],
+  td[data-column="finish"],
   td[data-column="total_price"],
   td[data-column="change"],
   td[data-column="latest_captured_at"] {
@@ -869,6 +892,7 @@ tbody tr.selected {
   td[data-column="quantity"]::before,
   td[data-column="condition"]::before,
   td[data-column="language"]::before,
+  td[data-column="finish"]::before,
   td[data-column="total_price"]::before,
   td[data-column="change"]::before,
   td[data-column="latest_captured_at"]::before {
@@ -894,19 +918,24 @@ tbody tr.selected {
     grid-row: 6;
   }
 
-  td[data-column="total_price"] {
+  td[data-column="finish"] {
     grid-column: 1 / -1;
     grid-row: 7;
   }
 
-  td[data-column="change"] {
+  td[data-column="total_price"] {
     grid-column: 1 / -1;
     grid-row: 8;
   }
 
-  td[data-column="latest_captured_at"] {
+  td[data-column="change"] {
     grid-column: 1 / -1;
     grid-row: 9;
+  }
+
+  td[data-column="latest_captured_at"] {
+    grid-column: 1 / -1;
+    grid-row: 10;
   }
 
   .column-hidden {
@@ -926,5 +955,33 @@ tbody tr.selected {
 
   .card-image {
     width: min(100%, 220px);
+  }
+}
+
+@media (max-height: 760px) and (min-width: 721px) {
+  html,
+  body {
+    height: auto;
+    min-height: 100%;
+  }
+
+  body {
+    min-height: 100dvh;
+    overflow: auto;
+  }
+
+  .shell {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  .layout {
+    min-height: 360px;
+  }
+
+  .table-wrap,
+  .detail {
+    min-height: 0;
   }
 }

@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS price_snapshots (
     quantity INTEGER NOT NULL,
     condition TEXT NOT NULL DEFAULT 'Near Mint',
     language TEXT NOT NULL DEFAULT 'English',
+    finish TEXT NOT NULL DEFAULT 'Non-Foil',
     currency TEXT NOT NULL,
     price NUMERIC(12, 2),
     captured_at TIMESTAMPTZ NOT NULL
@@ -56,6 +57,7 @@ class ReportRow:
     quantity: int
     condition: str
     language: str
+    finish: str
     currency: str
     latest_price: Decimal | None
     latest_captured_at: datetime
@@ -92,6 +94,13 @@ class TrackedCard:
     request: CardRequest
     currency: str
     latest_captured_at: datetime
+
+
+@dataclass(frozen=True)
+class CollectionStats:
+    cards: int
+    tracked_entries: int
+    snapshots: int
 
 
 class PriceStore:
@@ -145,8 +154,8 @@ class PriceStore:
                 )
                 cursor.execute(
                     """
-                    INSERT INTO price_snapshots (entry_id, scryfall_id, tracked_name, quantity, condition, language, currency, price, captured_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO price_snapshots (entry_id, scryfall_id, tracked_name, quantity, condition, language, finish, currency, price, captured_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         snapshot_entry_id,
@@ -155,6 +164,7 @@ class PriceStore:
                         request.quantity,
                         request.condition,
                         request.language,
+                        request.finish,
                         price.currency,
                         price.price,
                         timestamp,
@@ -206,7 +216,7 @@ class PriceStore:
                 f"""
                 WITH latest AS (
                     SELECT DISTINCT ON (entry_id)
-                        entry_id, scryfall_id, quantity, condition, language, currency, price, captured_at
+                        entry_id, scryfall_id, quantity, condition, language, finish, currency, price, captured_at
                     FROM price_snapshots
                     ORDER BY entry_id, captured_at DESC, id DESC
                 ),
@@ -228,6 +238,7 @@ class PriceStore:
                     latest.quantity,
                     latest.condition,
                     latest.language,
+                    latest.finish,
                     latest.currency,
                     latest.price AS latest_price,
                     latest.captured_at AS latest_captured_at,
@@ -269,6 +280,25 @@ class PriceStore:
             total_count=int(summary.get("total_count") or 0),
             total_value=decimal_or_none(summary.get("total_value")),
             currency=summary.get("currency"),
+        )
+
+    def collection_stats(self) -> CollectionStats:
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    (SELECT COUNT(*) FROM cards) AS cards,
+                    (SELECT COUNT(DISTINCT entry_id) FROM price_snapshots) AS tracked_entries,
+                    (SELECT COUNT(*) FROM price_snapshots) AS snapshots
+                """
+            )
+            rows = cursor.fetchall()
+        self.connection.commit()
+        values = dict(rows[0]) if rows else {}
+        return CollectionStats(
+            cards=int(values.get("cards") or 0),
+            tracked_entries=int(values.get("tracked_entries") or 0),
+            snapshots=int(values.get("snapshots") or 0),
         )
 
     def image_info(self, scryfall_id: str) -> dict[str, Any] | None:
@@ -447,25 +477,29 @@ class PriceStore:
                     SELECT MAX(first_captured_at) AS captured_at
                     FROM first_snapshots
                 ),
-                snapshot_times AS (
-                    SELECT DISTINCT captured_at
+                value_points AS (
+                    SELECT captured_at
+                    FROM collection_start
+                    WHERE captured_at IS NOT NULL
+                    UNION
+                    SELECT MAX(captured_at) AS captured_at
                     FROM price_snapshots
-                    WHERE captured_at >= (SELECT captured_at FROM collection_start)
                 )
                 SELECT
-                    snapshot_times.captured_at,
+                    value_points.captured_at,
                     SUM(latest.price * latest.quantity) AS total_value,
                     CASE WHEN COUNT(DISTINCT latest.currency) = 1 THEN MIN(latest.currency) ELSE NULL END AS currency
-                FROM snapshot_times
+                FROM value_points
                 JOIN LATERAL (
                     SELECT DISTINCT ON (entry_id)
                         entry_id, quantity, currency, price
                     FROM price_snapshots
-                    WHERE captured_at <= snapshot_times.captured_at
+                    WHERE captured_at <= value_points.captured_at
                     ORDER BY entry_id, captured_at DESC, id DESC
                 ) latest ON TRUE
-                GROUP BY snapshot_times.captured_at
-                ORDER BY snapshot_times.captured_at ASC
+                WHERE value_points.captured_at IS NOT NULL
+                GROUP BY value_points.captured_at
+                ORDER BY value_points.captured_at ASC
                 """
             )
             rows = [
@@ -485,7 +519,7 @@ class PriceStore:
                 """
                 WITH latest AS (
                     SELECT DISTINCT ON (entry_id)
-                        entry_id, scryfall_id, tracked_name, quantity, condition, language, currency, captured_at
+                        entry_id, scryfall_id, tracked_name, quantity, condition, language, finish, currency, captured_at
                     FROM price_snapshots
                     ORDER BY entry_id, captured_at DESC, id DESC
                 )
@@ -499,6 +533,7 @@ class PriceStore:
                     latest.quantity,
                     latest.condition,
                     latest.language,
+                    latest.finish,
                     latest.currency,
                     latest.captured_at AS latest_captured_at
                 FROM latest
@@ -518,7 +553,7 @@ class PriceStore:
                 """
                 WITH latest AS (
                     SELECT DISTINCT ON (entry_id)
-                        entry_id, scryfall_id, tracked_name, quantity, condition, language, currency, captured_at
+                        entry_id, scryfall_id, tracked_name, quantity, condition, language, finish, currency, captured_at
                     FROM price_snapshots
                     ORDER BY entry_id, captured_at DESC, id DESC
                 )
@@ -532,6 +567,7 @@ class PriceStore:
                     latest.quantity,
                     latest.condition,
                     latest.language,
+                    latest.finish,
                     latest.currency,
                     latest.captured_at AS latest_captured_at
                 FROM latest
@@ -556,6 +592,7 @@ class PriceStore:
                 cursor.execute("ALTER TABLE price_snapshots ALTER COLUMN entry_id SET NOT NULL")
                 cursor.execute("ALTER TABLE price_snapshots ADD COLUMN IF NOT EXISTS condition TEXT NOT NULL DEFAULT 'Near Mint'")
                 cursor.execute("ALTER TABLE price_snapshots ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'English'")
+                cursor.execute("ALTER TABLE price_snapshots ADD COLUMN IF NOT EXISTS finish TEXT NOT NULL DEFAULT 'Non-Foil'")
             self.connection.commit()
         except Exception:
             self.connection.rollback()
@@ -587,6 +624,7 @@ def row_to_report(row: Any) -> ReportRow:
         quantity=values["quantity"],
         condition=values["condition"],
         language=values["language"],
+        finish=values["finish"],
         currency=values["currency"],
         latest_price=decimal_or_none(values["latest_price"]),
         latest_captured_at=values["latest_captured_at"],
@@ -607,6 +645,7 @@ def row_to_tracked_card(row: Any) -> TrackedCard:
             collector_number=values["collector_number"],
             condition=values["condition"],
             language=values["language"],
+            finish=values["finish"],
         ),
         currency=values["currency"].lower(),
         latest_captured_at=values["latest_captured_at"],
@@ -624,6 +663,7 @@ def report_order_by(sort: str, direction: str) -> str:
         "quantity": "latest.quantity",
         "condition": 'latest.condition COLLATE "C"',
         "language": 'latest.language COLLATE "C"',
+        "finish": 'latest.finish COLLATE "C"',
         "latest_price": "latest.price",
         "total_price": "latest.price * latest.quantity",
         "change": "latest.price - first.price",
@@ -634,7 +674,7 @@ def report_order_by(sort: str, direction: str) -> str:
     nulls = "NULLS LAST"
     primary_columns = primary if isinstance(primary, list) else [primary]
     primary_order = ", ".join(f"{column} {sql_direction} {nulls}" for column in primary_columns)
-    tie_breaker = 'c.name COLLATE "C" ASC, c.set_code COLLATE "C" ASC, c.collector_number COLLATE "C" ASC, latest.condition COLLATE "C" ASC, latest.language COLLATE "C" ASC'
+    tie_breaker = 'c.name COLLATE "C" ASC, c.set_code COLLATE "C" ASC, c.collector_number COLLATE "C" ASC, latest.condition COLLATE "C" ASC, latest.language COLLATE "C" ASC, latest.finish COLLATE "C" ASC'
     return f"{primary_order}, {tie_breaker}"
 
 

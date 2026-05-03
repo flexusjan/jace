@@ -10,7 +10,7 @@ from .config import DEFAULT_REFRESH_INTERVAL_SECONDS
 from .importer import import_cards
 from .logs import log
 from .scryfall import ScryfallClient
-from .storage import PriceStore, TrackedCard
+from .storage import CollectionStats, PriceStore, TrackedCard
 
 
 @dataclass
@@ -123,8 +123,10 @@ class PriceRefreshScheduler:
             self._status.error = error
         status = "failed" if error is not None else "ok"
         level = "ERROR" if error is not None else "INFO"
+        collection_stats = refresh_collection_stats_log(self.database_url)
         log(
-            f"PRICE REFRESH COMPLETED mode={mode} status={status} total={total} processed={processed} refreshed={refreshed} failed={failed}",
+            f"PRICE REFRESH COMPLETED mode={mode} status={status} total={total} processed={processed} "
+            f"refreshed={refreshed} failed={failed} {collection_stats}",
             level=level,
         )
 
@@ -252,3 +254,18 @@ def refresh_status_payload(status: RefreshStatus, interval_seconds: int) -> dict
         "error": status.error,
         "interval_seconds": interval_seconds,
     }
+
+
+def refresh_collection_stats_log(database_url: str | None) -> str:
+    try:
+        store = PriceStore(database_url, initialize_schema=False)
+        try:
+            return format_collection_stats(store.collection_stats())
+        finally:
+            store.close()
+    except Exception as exc:
+        return f"collection_stats_error={exc}"
+
+
+def format_collection_stats(stats: CollectionStats) -> str:
+    return f"cards={stats.cards} tracked_entries={stats.tracked_entries} snapshots={stats.snapshots}"

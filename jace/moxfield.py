@@ -8,7 +8,7 @@ from urllib.request import Request, urlopen
 
 from . import APP_USER_AGENT
 from .models import CardRequest
-from .parser import normalize_condition, normalize_language
+from .parser import normalize_condition, normalize_finish, normalize_language
 
 BASE_URL = "https://api2.moxfield.com"
 
@@ -123,6 +123,9 @@ def request_from_moxfield_entry(fallback_name: str, entry: object) -> CardReques
     collector_number = card.get("cn") or card.get("collectorNumber")
     condition = entry.get("condition") or card.get("condition")
     language = entry.get("language") or card.get("language") or "English"
+    finish = entry.get("finish") or card.get("finish")
+    if finish is None:
+        finish = entry.get("foil") or entry.get("isFoil") or card.get("foil") or card.get("isFoil")
     return CardRequest(
         quantity=quantity,
         name=str(name),
@@ -130,13 +133,14 @@ def request_from_moxfield_entry(fallback_name: str, entry: object) -> CardReques
         collector_number=str(collector_number) if collector_number else None,
         condition=normalize_condition(str(condition) if condition is not None else None),
         language=normalize_language(str(language) if language is not None else None),
+        finish=normalize_finish(str(finish) if finish is not None else None),
     )
 
 
 def merge_requests(requests: list[CardRequest]) -> list[CardRequest]:
-    merged: dict[tuple[str, str | None, str | None, str, str], CardRequest] = {}
+    merged: dict[tuple[str, str | None, str | None, str, str, str], CardRequest] = {}
     for request in requests:
-        key = (request.name, request.set_code, request.collector_number, request.condition, request.language)
+        key = (request.name, request.set_code, request.collector_number, request.condition, request.language, request.finish)
         existing = merged.get(key)
         if existing is None:
             merged[key] = request
@@ -148,5 +152,6 @@ def merge_requests(requests: list[CardRequest]) -> list[CardRequest]:
             collector_number=existing.collector_number,
             condition=existing.condition,
             language=existing.language,
+            finish=existing.finish,
         )
     return list(merged.values())

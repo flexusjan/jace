@@ -26,6 +26,8 @@ class FakeCursor:
             self.rows = [{"deleted": len(parameters[0])}]
         if "COUNT(*) AS total_count" in statement:
             self.rows = [{"total_count": 1, "total_value": "4.50", "currency": "EUR"}]
+        if "tracked_entries" in statement and "snapshots" in statement:
+            self.rows = [{"cards": 2, "tracked_entries": 3, "snapshots": 5}]
 
     def fetchall(self):
         return self.rows
@@ -87,6 +89,7 @@ class StorageTest(unittest.TestCase):
         self.assertEqual(insert_snapshots[1][3], 2)
         self.assertEqual(insert_snapshots[1][4], "Near Mint")
         self.assertEqual(insert_snapshots[1][5], "English")
+        self.assertEqual(insert_snapshots[1][6], "Non-Foil")
         self.assertEqual(connection.commits, 2)
         self.assertEqual(connection.rollbacks, 0)
         self.assertTrue(connection.closed)
@@ -104,6 +107,7 @@ class StorageTest(unittest.TestCase):
             "quantity": 2,
             "condition": "Near Mint",
             "language": "English",
+            "finish": "Non-Foil",
             "currency": "EUR",
             "latest_price": "2.25",
             "latest_captured_at": datetime(2026, 2, 1, tzinfo=timezone.utc),
@@ -119,6 +123,7 @@ class StorageTest(unittest.TestCase):
         self.assertEqual(report.quantity, 2)
         self.assertEqual(report.condition, "Near Mint")
         self.assertEqual(report.language, "English")
+        self.assertEqual(report.finish, "Non-Foil")
         self.assertEqual(report.latest_price, Decimal("2.25"))
         self.assertEqual(report.first_price, Decimal("1.50"))
 
@@ -201,8 +206,8 @@ class StorageTest(unittest.TestCase):
         statement = connection.cursor_instance.statements[-1][0]
         self.assertIn("collection_start", statement)
         self.assertIn("MAX(first_captured_at)", statement)
-        self.assertIn("captured_at >=", statement)
-        self.assertIn("snapshot_times", statement)
+        self.assertIn("value_points", statement)
+        self.assertIn("MAX(captured_at)", statement)
         self.assertIn("JOIN LATERAL", statement)
         self.assertIn("SUM(latest.price * latest.quantity)", statement)
         self.assertEqual(history[0].total_value, Decimal("4.50"))
@@ -224,6 +229,7 @@ class StorageTest(unittest.TestCase):
                     "quantity": 2,
                     "condition": "Near Mint",
                     "language": "English",
+                    "finish": "Non-Foil",
                     "currency": "EUR",
                     "latest_price": "2.25",
                     "latest_captured_at": captured_at,
@@ -247,6 +253,20 @@ class StorageTest(unittest.TestCase):
         self.assertEqual(page.rows[0].name, "Lightning Bolt")
         self.assertEqual(page.total_count, 1)
         self.assertEqual(page.total_value, Decimal("4.50"))
+
+    def test_collection_stats_counts_cards_entries_and_snapshots(self):
+        connection = FakeConnection()
+        store = PriceStore(connection=connection)
+
+        stats = store.collection_stats()
+
+        statement = connection.cursor_instance.statements[-1][0]
+        self.assertIn("COUNT(*) FROM cards", statement)
+        self.assertIn("COUNT(DISTINCT entry_id)", statement)
+        self.assertIn("COUNT(*) FROM price_snapshots", statement)
+        self.assertEqual(stats.cards, 2)
+        self.assertEqual(stats.tracked_entries, 3)
+        self.assertEqual(stats.snapshots, 5)
 
     def test_delete_tracked_cards_removes_only_selected_tracking_entries(self):
         connection = FakeConnection()
@@ -276,6 +296,7 @@ class StorageTest(unittest.TestCase):
                     "quantity": 2,
                     "condition": "Lightly Played",
                     "language": "German",
+                    "finish": "Foil",
                     "currency": "EUR",
                     "latest_captured_at": captured_at,
                 }
@@ -294,6 +315,7 @@ class StorageTest(unittest.TestCase):
         self.assertEqual(cards[0].request.quantity, 2)
         self.assertEqual(cards[0].request.condition, "Lightly Played")
         self.assertEqual(cards[0].request.language, "German")
+        self.assertEqual(cards[0].request.finish, "Foil")
         self.assertEqual(cards[0].currency, "eur")
 
 

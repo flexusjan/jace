@@ -27,7 +27,7 @@ from .moxfield import MoxfieldClient, MoxfieldError
 from .parser import parse_card_csv, parse_card_text
 from .refresher import PriceRefreshScheduler
 from .scryfall import ScryfallError
-from .storage import HistoryPoint, PriceStore, ReportRow, ValueHistoryPoint
+from .storage import CollectionStats, HistoryPoint, PriceStore, ReportRow, ValueHistoryPoint
 
 STATIC_DIR = Path(__file__).with_name("static")
 ALLOWED_IMAGE_HOST_SUFFIX = ".scryfall.io"
@@ -74,6 +74,11 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
                 search=search,
                 sort=sort,
                 direction=direction,
+            )
+            log(
+                "CARDS LISTED "
+                f"page={page} page_size={page_size} q={search!r} sort={sort} direction={direction} "
+                f"returned={len(report.rows)} total={report.total_count}"
             )
             self._send_json(cards_payload(report.rows, pagination=report_pagination_payload(report, page, page_size)))
             return
@@ -237,6 +242,7 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
                     self._send_json({"error": "No cards selected"}, HTTPStatus.BAD_REQUEST)
                     return
                 deleted = self.store.delete_tracked_cards(tracking_ids)
+                log(f"CARDS DELETE tracking_ids requested={len(tracking_ids)} deleted={deleted} {collection_stats_log(self.store)}")
                 self._send_json({"deleted": deleted})
                 return
 
@@ -249,6 +255,7 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": "No cards selected"}, HTTPStatus.BAD_REQUEST)
                 return
             deleted = self.store.delete_cards(scryfall_ids)
+            log(f"CARDS DELETE scryfall_ids requested={len(scryfall_ids)} deleted={deleted} {collection_stats_log(self.store)}")
         except json.JSONDecodeError as exc:
             self._send_json({"error": f"Invalid JSON: {exc.msg}"}, HTTPStatus.BAD_REQUEST)
             return
@@ -320,6 +327,7 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
 def serve(host: str, port: int, database_url: str | None) -> int:
     config = app_config()
     store = PriceStore(database_url)
+    log(f"COLLECTION STARTUP {collection_stats_log(store)}")
     jobs = ImportJobs()
     refresher = PriceRefreshScheduler(store.database_url, interval_seconds=config.refresh_interval_seconds)
     refresher.start()
@@ -561,7 +569,10 @@ class ImportJobs:
                 current_card=None,
                 failures=[asdict(failure) for failure in result.failures],
             )
-            log(f"IMPORT JOB COMPLETED {job_id} total={result.total} imported={result.imported} failed={len(result.failures)}")
+            log(
+                f"IMPORT JOB COMPLETED {job_id} total={result.total} imported={result.imported} "
+                f"failed={len(result.failures)} {collection_stats_log(store)}"
+            )
         except Exception as exc:
             log(f"IMPORT JOB FAILED {job_id}: {exc}", level="ERROR")
             self._update(job_id, status="error", error=str(exc))
@@ -617,6 +628,15 @@ def scryfall_image_url_allowed(url: str) -> bool:
     parsed = urlparse(url)
     host = (parsed.hostname or "").casefold()
     return parsed.scheme == "https" and (host == "scryfall.io" or host.endswith(ALLOWED_IMAGE_HOST_SUFFIX))
+
+
+def collection_stats_log(store: PriceStore) -> str:
+    stats = store.collection_stats()
+    return format_collection_stats(stats)
+
+
+def format_collection_stats(stats: CollectionStats) -> str:
+    return f"cards={stats.cards} tracked_entries={stats.tracked_entries} snapshots={stats.snapshots}"
 
 
 def price_change(row: ReportRow) -> Decimal | None:

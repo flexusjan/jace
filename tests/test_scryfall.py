@@ -1,16 +1,25 @@
 import unittest
+from decimal import Decimal
 from unittest.mock import patch
 
 from jace.models import CardRequest
 from jace.scryfall import (
     ScryfallClient,
     card_image_url,
+    card_price_from_data,
     chunks,
     collection_identifier,
     match_collection_data,
     match_collection_data_by_id,
     scryfall_card_path,
 )
+
+
+class StaticConverter:
+    def convert(self, amount, source_currency, target_currency):
+        self.source_currency = source_currency
+        self.target_currency = target_currency
+        return amount * 2
 
 
 class ScryfallTest(unittest.TestCase):
@@ -99,6 +108,46 @@ class ScryfallTest(unittest.TestCase):
         client = ScryfallClient(collection_batch_size=2)
 
         self.assertEqual(chunks([1, 2, 3], client.collection_batch_size), [[1, 2], [3]])
+
+    def test_card_price_uses_foil_price_when_requested(self):
+        price = card_price_from_data(card_data({"eur": "1.00", "eur_foil": "2.50"}, finishes=["nonfoil", "foil"]), "eur", "Foil")
+
+        self.assertEqual(price.price, Decimal("2.50"))
+
+    def test_card_price_prefers_converted_usd_foil_over_eur_foil_outliers(self):
+        converter = StaticConverter()
+
+        price = card_price_from_data(card_data({"usd_foil": "25.11", "eur_foil": "1582.88"}, finishes=["nonfoil", "foil"]), "eur", "Foil", converter)
+
+        self.assertEqual(price.price, Decimal("50.22"))
+        self.assertEqual(converter.source_currency, "usd")
+        self.assertEqual(converter.target_currency, "eur")
+
+    def test_card_price_infers_foil_for_foil_only_card(self):
+        price = card_price_from_data(card_data({"eur": None, "eur_foil": "1.50"}, finishes=["foil"]), "eur", "Non-Foil")
+
+        self.assertEqual(price.price, Decimal("1.50"))
+
+    def test_card_price_converts_other_fiat_currency_when_requested_currency_missing(self):
+        converter = StaticConverter()
+
+        price = card_price_from_data(card_data({"eur": None, "usd": "3.00"}, finishes=["nonfoil"]), "eur", "Non-Foil", converter)
+
+        self.assertEqual(price.price, Decimal("6.00"))
+        self.assertEqual(converter.source_currency, "usd")
+        self.assertEqual(converter.target_currency, "eur")
+
+
+def card_data(prices, finishes=None):
+    return {
+        "id": "card-1",
+        "name": "Sol Ring",
+        "set": "ltc",
+        "collector_number": "314",
+        "prices": prices,
+        "finishes": finishes or ["nonfoil"],
+        "scryfall_uri": "https://scryfall.example/card-1",
+    }
 
 
 if __name__ == "__main__":

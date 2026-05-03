@@ -12,6 +12,7 @@ class CardRequest:
     collector_number: str | None = None
     condition: str = "Near Mint"
     language: str = "English"
+    finish: str = "Non-Foil"
 
 
 @dataclass(frozen=True)

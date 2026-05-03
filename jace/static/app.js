@@ -27,6 +27,7 @@ const DEFAULT_VISIBLE_COLUMNS = [
   "quantity",
   "condition",
   "language",
+  "finish",
   "latest_price",
   "total_price",
   "change",
@@ -57,6 +58,10 @@ const columns = [
   {
     key: "language",
     render: card => escapeHtml(card.language || "English")
+  },
+  {
+    key: "finish",
+    render: card => escapeHtml(finishLabel(card.finish))
   },
   {
     key: "latest_price",
@@ -213,6 +218,7 @@ async function loadCards() {
     }
     render();
   } catch (error) {
+    renderRowsMessage(`Could not load cards: ${error.message}`);
     detail.innerHTML = `<h2>Could not load prices</h2><p class="muted">${escapeHtml(error.message)}</p>`;
   }
 }
@@ -668,7 +674,7 @@ function sortValue(card, key) {
   if (key === "set") {
     return `${card.set_code} ${card.collector_number}`.toLowerCase();
   }
-  if (key === "condition" || key === "language") {
+  if (key === "condition" || key === "language" || key === "finish") {
     return String(card[key] || "").toLowerCase();
   }
   if (key === "quantity") {
@@ -716,7 +722,22 @@ function updatePaginationControls() {
 }
 
 function renderRows(cards) {
+  if (cards.length === 0) {
+    const message = state.query
+      ? `No cards match "${state.query}"`
+      : "No cards tracked";
+    renderRowsMessage(message);
+    return;
+  }
   cardsBody.innerHTML = cards.map(card => rowTemplate(card)).join("");
+}
+
+function renderRowsMessage(message) {
+  cardsBody.innerHTML = `
+    <tr class="empty-row">
+      <td colspan="${columns.length + 2}">${escapeHtml(message)}</td>
+    </tr>
+  `;
 }
 
 function updateSelectedRows() {
@@ -781,7 +802,7 @@ function renderDetail(card) {
   detail.innerHTML = `
     ${cardImage(card)}
     <h2>${escapeHtml(card.name)}</h2>
-    <p class="muted">${escapeHtml(card.set_code.toUpperCase())} #${escapeHtml(card.collector_number)} · ${card.quantity} tracked · ${escapeHtml(conditionLabel(card.condition))} · ${escapeHtml(card.language || "English")}</p>
+    <p class="muted">${escapeHtml(card.set_code.toUpperCase())} #${escapeHtml(card.collector_number)} · ${card.quantity} tracked · ${escapeHtml(conditionLabel(card.condition))} · ${escapeHtml(card.language || "English")} · ${escapeHtml(finishLabel(card.finish))}</p>
     ${historyStatus(history, points, card.currency, error)}
     <ul class="history-list">
       ${(history || []).slice().reverse().map(point => `
@@ -881,6 +902,7 @@ function columnLabel(key) {
     quantity: "Qty",
     condition: "Condition",
     language: "Language",
+    finish: "Finish",
     latest_price: "Latest",
     total_price: "Total",
     change: "Change",
@@ -945,6 +967,17 @@ function conditionLabel(value) {
     "damaged": "Damaged"
   };
   return labels[normalized] || String(value || "Near Mint");
+}
+
+function finishLabel(value) {
+  const normalized = String(value || "Non-Foil").trim().toLowerCase().replaceAll("_", "-");
+  const labels = {
+    "nonfoil": "Non-Foil",
+    "non-foil": "Non-Foil",
+    "foil": "Foil",
+    "etched": "Etched"
+  };
+  return labels[normalized] || String(value || "Non-Foil");
 }
 
 function signedMoney(value, currency) {

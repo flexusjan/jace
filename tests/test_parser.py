@@ -30,6 +30,13 @@ class ParserTest(unittest.TestCase):
         self.assertEqual(card.name, "Lightning Bolt")
         self.assertEqual(card.set_code, "sld")
         self.assertEqual(card.collector_number, "675")
+        self.assertEqual(card.finish, "Foil")
+
+    def test_parse_line_defaults_to_nonfoil(self):
+        card = parse_card_line("1 Lightning Bolt (SLD) 675")
+
+        self.assertIsNotNone(card)
+        self.assertEqual(card.finish, "Non-Foil")
 
     def test_parse_bracket_set_suffix(self):
         card = parse_card_line("Sol Ring [LTC]")
@@ -68,12 +75,13 @@ class ParserTest(unittest.TestCase):
 
     def test_parse_csv_condition_and_language(self):
         cards = parse_card_csv(
-            '"Count","Name","Edition","Condition","Language","Collector Number"\n'
-            '"1","Counterspell","clu","Lightly Played","German","84"\n'
+            '"Count","Name","Edition","Condition","Language","Finish","Collector Number"\n'
+            '"1","Counterspell","clu","Lightly Played","German","Foil","84"\n'
         )
 
         self.assertEqual(cards[0].condition, "Lightly Played")
         self.assertEqual(cards[0].language, "German")
+        self.assertEqual(cards[0].finish, "Foil")
 
 
 if __name__ == "__main__":

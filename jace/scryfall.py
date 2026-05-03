@@ -4,7 +4,7 @@ import json
 import threading
 import time
 from decimal import Decimal
-from typing import Iterator, TypeVar
+from typing import Iterator, Protocol, TypeVar
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
@@ -18,6 +18,7 @@ from .config import (
     DEFAULT_SCRYFALL_TIMEOUT_SECONDS,
     app_config,
 )
+from .exchange import ExchangeRateError, default_exchange_client
 from .models import CardPrice, CardRequest
 
 BASE_URL = DEFAULT_SCRYFALL_BASE_URL
@@ -35,6 +36,11 @@ class ScryfallError(RuntimeError):
 
 
 CardPriceResult = tuple[CardRequest, CardPrice | None, Exception | None]
+
+
+class CurrencyConverter(Protocol):
+    def convert(self, amount: Decimal, source_currency: str, target_currency: str) -> Decimal:
+        pass
 
 
 class ScryfallClient:
@@ -57,7 +63,7 @@ class ScryfallClient:
 
     def fetch_card_price(self, card: CardRequest, currency: str = "eur") -> CardPrice:
         data = self._get_card(card)
-        return card_price_from_data(data, currency)
+        return card_price_from_data(data, currency, card.finish)
 
     def fetch_card_prices(self, cards: list[CardRequest], currency: str = "eur") -> list[CardPriceResult]:
         results: list[CardPriceResult] = []
@@ -82,8 +88,8 @@ class ScryfallClient:
 
             for card, card_data in zip(batch, data):
                 try:
-                    batch_results.append((card, card_price_from_data(card_data, currency), None))
-                except (KeyError, ValueError) as exc:
+                    batch_results.append((card, card_price_from_data(card_data, currency, card.finish), None))
+                except (KeyError, ValueError, ExchangeRateError) as exc:
                     batch_results.append((card, None, exc))
             yield batch_results
 
@@ -112,8 +118,8 @@ class ScryfallClient:
 
             for (card, _), card_data in zip(batch, data):
                 try:
-                    results.append((card, card_price_from_data(card_data, currency), None))
-                except (KeyError, ValueError) as exc:
+                    results.append((card, card_price_from_data(card_data, currency, card.finish), None))
+                except (KeyError, ValueError, ExchangeRateError) as exc:
                     results.append((card, None, exc))
         return results
 
@@ -188,11 +194,16 @@ class ScryfallClient:
         raise ScryfallError(f"Scryfall request failed for {url}")
 
 
-def card_price_from_data(data: dict, currency: str = "eur") -> CardPrice:
+def card_price_from_data(
+    data: dict,
+    currency: str = "eur",
+    finish: str = "Non-Foil",
+    converter: CurrencyConverter = default_exchange_client,
+) -> CardPrice:
     prices = data.get("prices") or {}
     normalized_currency = currency.lower()
-    raw_price = prices.get(normalized_currency)
-    price = Decimal(raw_price) if raw_price else None
+    source_currency, raw_price = price_source(prices, normalized_currency, effective_finish(data, finish))
+    price = price_from_source(raw_price, source_currency, normalized_currency, converter) if raw_price and source_currency else None
 
     return CardPrice(
         scryfall_id=data["id"],
@@ -204,6 +215,82 @@ def card_price_from_data(data: dict, currency: str = "eur") -> CardPrice:
         source_url=data["scryfall_uri"],
         image_url=card_image_url(data),
     )
+
+
+def effective_finish(data: dict, requested_finish: str) -> str:
+    normalized_finish = normalize_finish(requested_finish)
+    finishes = [normalize_finish(value) for value in data.get("finishes") or []]
+    if normalized_finish == "Non-Foil" and len(finishes) == 1 and finishes[0] in {"Foil", "Etched"}:
+        return finishes[0]
+    return normalized_finish
+
+
+def normalize_finish(value: object) -> str:
+    normalized_value = str(value or "").strip().casefold().replace("_", "-")
+    if normalized_value in {"foil", "f", "*f*"}:
+        return "Foil"
+    if normalized_value in {"etched", "e", "*e*"}:
+        return "Etched"
+    return "Non-Foil"
+
+
+def price_source(prices: dict, currency: str, finish: str) -> tuple[str | None, str | None]:
+    candidates = price_candidates(currency, finish)
+    candidates.extend(fallback_price_candidates(currency, finish))
+    seen: set[tuple[str, str]] = set()
+    for source_currency, field in candidates:
+        key = (source_currency, field)
+        if key in seen:
+            continue
+        seen.add(key)
+        raw_price = prices.get(field)
+        if raw_price:
+            return source_currency, raw_price
+    return None, None
+
+
+def price_candidates(currency: str, finish: str) -> list[tuple[str, str]]:
+    if finish == "Foil":
+        if currency == "eur":
+            return [("usd", "usd_foil"), ("eur", "eur_foil")]
+        return [(currency, f"{currency}_foil")]
+    if finish == "Etched":
+        return [("usd", "usd_etched")]
+    return [(currency, currency)]
+
+
+def fallback_price_candidates(currency: str, finish: str) -> list[tuple[str, str]]:
+    other_currency = "usd" if currency == "eur" else "eur" if currency == "usd" else None
+    candidates: list[tuple[str, str]] = []
+    if finish == "Foil":
+        if currency != "eur" and other_currency:
+            candidates.append((other_currency, f"{other_currency}_foil"))
+        candidates.extend([(currency, currency)])
+        if other_currency:
+            candidates.append((other_currency, other_currency))
+    elif finish == "Etched":
+        candidates.extend([(currency, currency)])
+        if other_currency:
+            candidates.extend([(other_currency, other_currency), (other_currency, f"{other_currency}_foil")])
+    else:
+        if other_currency:
+            candidates.append((other_currency, other_currency))
+        candidates.extend([(currency, f"{currency}_foil")])
+        if other_currency:
+            candidates.append((other_currency, f"{other_currency}_foil"))
+    return candidates
+
+
+def price_from_source(
+    raw_price: str,
+    source_currency: str,
+    target_currency: str,
+    converter: CurrencyConverter,
+) -> Decimal:
+    price = Decimal(raw_price)
+    if source_currency == target_currency:
+        return price
+    return converter.convert(price, source_currency, target_currency)
 
 
 def collection_identifier(card: CardRequest) -> dict[str, str]:

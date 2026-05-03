@@ -9,6 +9,7 @@ from .models import CardRequest
 
 DEFAULT_CONDITION = "Near Mint"
 DEFAULT_LANGUAGE = "English"
+DEFAULT_FINISH = "Non-Foil"
 CONDITION_ALIASES = {
     "near mint": "Near Mint",
     "near_mint": "Near Mint",
@@ -25,11 +26,21 @@ CONDITION_ALIASES = {
     "damaged": "Damaged",
     "dmg": "Damaged",
 }
+FINISH_ALIASES = {
+    "nonfoil": "Non-Foil",
+    "non-foil": "Non-Foil",
+    "normal": "Non-Foil",
+    "regular": "Non-Foil",
+    "foil": "Foil",
+    "f": "Foil",
+    "*f*": "Foil",
+    "etched": "Etched",
+    "e": "Etched",
+    "*e*": "Etched",
+}
 
 SET_SUFFIX_RE = re.compile(r"^(?:(?P<qty>\d+)x?\s+)?(?P<name>.+?)\s+\[(?P<set>[A-Za-z0-9]{2,8})\]\s*$")
-ARENA_EXPORT_RE = re.compile(
-    r"^(?:(?P<qty>\d+)x?\s+)?(?P<name>.+?)(?:\s+\((?P<set>[A-Za-z0-9]{2,8})\)\s+(?P<num>[A-Za-z0-9-]+)(?:\s+.*)?)?\s*$"
-)
+ARENA_EXPORT_RE = re.compile(r"^(?:(?P<qty>\d+)x?\s+)?(?P<name>.+?)(?:\s+\((?P<set>[A-Za-z0-9]{2,8})\)\s+(?P<num>[A-Za-z0-9-]+)(?P<trailing>.*)?)?\s*$")
 
 
 def parse_card_line(line: str) -> CardRequest | None:
@@ -50,7 +61,8 @@ def parse_card_line(line: str) -> CardRequest | None:
     name = match.group("name").strip()
     set_code = match.group("set").lower() if match.group("set") else None
     collector_number = match.group("num") if match.group("num") else None
-    return CardRequest(quantity=quantity, name=name, set_code=set_code, collector_number=collector_number)
+    finish = finish_from_text(match.group("trailing") or "")
+    return CardRequest(quantity=quantity, name=name, set_code=set_code, collector_number=collector_number, finish=finish)
 
 
 def parse_card_file(path: Path) -> list[CardRequest]:
@@ -81,6 +93,7 @@ def parse_card_csv(text: str, source: str = "csv") -> list[CardRequest]:
     number_field = field_name(fields, "collector number", "collector_number", "number")
     condition_field = field_name(fields, "condition")
     language_field = field_name(fields, "language")
+    finish_field = field_name(fields, "finish", "foil", "is foil", "is_foil")
     if not name_field:
         raise ValueError(f"{source}: CSV must contain a Name column")
 
@@ -94,6 +107,7 @@ def parse_card_csv(text: str, source: str = "csv") -> list[CardRequest]:
         collector_number = (row.get(number_field) or "").strip() if number_field else None
         condition = normalize_condition(row.get(condition_field) if condition_field else None)
         language = normalize_language(row.get(language_field) if language_field else None)
+        finish = normalize_finish(row.get(finish_field) if finish_field else None)
         requests.append(
             CardRequest(
                 quantity=quantity,
@@ -102,6 +116,7 @@ def parse_card_csv(text: str, source: str = "csv") -> list[CardRequest]:
                 collector_number=collector_number or None,
                 condition=condition,
                 language=language,
+                finish=finish,
             )
         )
     return requests
@@ -137,3 +152,27 @@ def normalize_condition(value: str | None) -> str:
 def normalize_language(value: str | None) -> str:
     raw = (value or "").strip()
     return raw or DEFAULT_LANGUAGE
+
+
+def normalize_finish(value: str | None) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        return DEFAULT_FINISH
+    lowered = raw.lower()
+    if lowered in {"true", "yes", "1"}:
+        return "Foil"
+    if lowered in {"false", "no", "0"}:
+        return "Non-Foil"
+    return FINISH_ALIASES.get(lowered, raw)
+
+
+def finish_from_text(value: str) -> str:
+    raw = value.strip()
+    if not raw:
+        return DEFAULT_FINISH
+    tokens = re.findall(r"\*[A-Za-z]+\*|[A-Za-z-]+", raw)
+    for token in tokens:
+        finish = FINISH_ALIASES.get(token.lower())
+        if finish in {"Foil", "Etched"}:
+            return finish
+    return DEFAULT_FINISH

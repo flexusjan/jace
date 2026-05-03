@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.3 - 2026-05-03
+
+- Track card finish separately so foil and etched printings can use the correct Scryfall price fields.
+- Add exchange-rate fallback pricing when requested EUR/USD prices are missing or foil EUR values are unreliable.
+- Keep the collection table reachable after refreshes on short desktop viewports and show table-level load errors.
+- Speed up reloads by calculating only the portfolio value points the frontend displays.
+- Add collection count logging around startup, imports, deletes, and price refreshes.
+
 ## 1.0.2 - 2026-05-03
 
 - Improve the smartphone layout by replacing the wide card table with compact mobile card rows that include card thumbnails and key price details.

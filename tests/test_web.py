@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from jace.models import CardRequest
 from jace.refresher import RefreshStatus, refresh_status_payload
-from jace.storage import HistoryPoint, ReportPage, ReportRow, ValueHistoryPoint
+from jace.storage import CollectionStats, HistoryPoint, ReportPage, ReportRow, ValueHistoryPoint
 from jace.web import (
     ImportJob,
     ImportJobs,
@@ -15,6 +15,7 @@ from jace.web import (
     basic_auth_credentials,
     card_history_payload,
     cards_payload,
+    format_collection_stats,
     import_payload,
     import_requests_from_payload,
     report_pagination_payload,
@@ -40,6 +41,7 @@ class WebPayloadTest(unittest.TestCase):
             quantity=1,
             condition="Near Mint",
             language="English",
+            finish="Non-Foil",
             currency="EUR",
             latest_price=Decimal("0.72"),
             latest_captured_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
@@ -82,6 +84,7 @@ class WebPayloadTest(unittest.TestCase):
             quantity=1,
             condition="Near Mint",
             language="English",
+            finish="Non-Foil",
             currency="EUR",
             latest_price=Decimal("0.72"),
             latest_captured_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
@@ -131,6 +134,11 @@ class WebPayloadTest(unittest.TestCase):
         self.assertEqual(payload["history"][0]["total_value"], "12.50")
         self.assertEqual(payload["history"][0]["currency"], "EUR")
 
+    def test_format_collection_stats_includes_storage_counts(self):
+        text = format_collection_stats(CollectionStats(cards=2, tracked_entries=3, snapshots=5))
+
+        self.assertEqual(text, "cards=2 tracked_entries=3 snapshots=5")
+
     def test_rendered_index_html_uses_configured_theme(self):
         self.assertIn('data-theme="dark"', rendered_index_html(True))
         self.assertIn('data-theme="light"', rendered_index_html(False))
@@ -149,6 +157,7 @@ class WebPayloadTest(unittest.TestCase):
                 quantity=1,
                 condition="Near Mint",
                 language="English",
+                finish="Non-Foil",
                 currency="EUR",
                 latest_price=Decimal("0.25"),
                 latest_captured_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
@@ -167,6 +176,7 @@ class WebPayloadTest(unittest.TestCase):
                 quantity=1,
                 condition="Near Mint",
                 language="English",
+                finish="Foil",
                 currency="EUR",
                 latest_price=Decimal("0.75"),
                 latest_captured_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
