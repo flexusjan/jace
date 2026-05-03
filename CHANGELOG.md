@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.4 - 2026-05-03
+
+- Re-publish the 1.0.3 release contents after re-enabling GitHub Actions so the Docker image publish workflow can run.
+
 ## 1.0.3 - 2026-05-03
 
 - Track card finish separately so foil and etched printings can use the correct Scryfall price fields.
