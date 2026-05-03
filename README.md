@@ -116,8 +116,21 @@ Card Name [SET]
 Example: [examples/cards.txt](examples/cards.txt)
 
 The frontend also accepts single card entries, Moxfield deck links, and CSV
-files with columns such as `Count`, `Name`, `Edition`, `Collector Number`,
-`Condition`, and `Language`.
+files. CSV import columns are matched by header name:
+
+| CSV header | Required | Stored as | Notes |
+| --- | --- | --- | --- |
+| `Name` or `Card Name` | yes | `price_snapshots.tracked_name` | Used to find the card on Scryfall |
+| `Count`, `Quantity`, or `Qty` | no | `price_snapshots.quantity` | Defaults to `1` |
+| `Edition`, `Set`, or `Set Code` | no | `cards.set_code` | Stored as lowercase set code after Scryfall lookup |
+| `Collector Number`, `collector_number`, or `Number` | no | `cards.collector_number` | Used together with the set code for exact Scryfall lookup |
+| `Condition` | no | `price_snapshots.condition` | Defaults to `Near Mint`; aliases like `NM`, `LP`, `MP`, `HP`, and `DMG` are normalized |
+| `Language` | no | `price_snapshots.language` | Defaults to `English` |
+
+Scryfall metadata is stored in the `cards` table (`scryfall_id`, `name`,
+`set_code`, `collector_number`, `source_url`, and image fields). Tracking data
+is stored in `price_snapshots` (`entry_id`, `tracked_name`, `quantity`,
+`condition`, `language`, `currency`, `price`, and `captured_at`).
 
 ## Using The App
 
