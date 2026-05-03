@@ -24,7 +24,27 @@ Create a local `.env` file. This file is ignored by Git.
 cp .env.example .env
 ```
 
-Set your own `POSTGRES_PASSWORD` in `.env`, then start the stack:
+Set at least `POSTGRES_PASSWORD` in `.env`, then start the stack:
+
+```env
+POSTGRES_PASSWORD=change-me
+```
+
+To protect the browser frontend and API with HTTP Basic Auth, also set both auth
+variables:
+
+```env
+JACE_AUTH_USERNAME=jace
+JACE_AUTH_PASSWORD=beleren
+```
+
+Required and commonly set variables:
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `POSTGRES_PASSWORD` | yes | Password for the bundled Postgres database and the app connection |
+| `JACE_AUTH_USERNAME` | no | Enables HTTP Basic Auth when set together with `JACE_AUTH_PASSWORD` |
+| `JACE_AUTH_PASSWORD` | no | HTTP Basic Auth password |
 
 ```bash
 docker compose up -d
@@ -46,7 +66,11 @@ Runtime settings can be overridden in `.env`:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
+| `POSTGRES_DB` | `jace` | Postgres database name |
+| `POSTGRES_USER` | `jace` | Postgres database user |
+| `POSTGRES_IMAGE` | `postgres:18-alpine` | Postgres container image |
 | `APP_PORT` | `8180` | Host port exposed by Docker Compose |
+| `JACE_IMAGE` | `ghcr.io/flexusjan/jace:latest` | App container image |
 | `JACE_DEFAULT_CURRENCY` | `eur` | Default import currency (`eur`, `usd`, or `tix`) |
 | `JACE_WEB_HOST` | `0.0.0.0` | Web server bind host |
 | `JACE_WEB_PORT` | `8180` | Web server bind port inside the container |
