@@ -24,7 +24,17 @@ class FakeCursor:
             self.rowcount = len(parameters[0])
         if "COUNT(DISTINCT" in statement and parameters:
             self.rows = [{"deleted": len(parameters[0])}]
-        if "COUNT(*) AS total_count" in statement:
+        if "COUNT(*) AS total_count" in statement and "FROM price_snapshots" in statement and "WHERE entry_id = %s" in statement:
+            self.rows = [{"total_count": 3}]
+        elif "WITH selected AS" in statement:
+            self.rows = [
+                {
+                    "captured_at": datetime(2026, 2, 1, tzinfo=timezone.utc),
+                    "price": "0.25",
+                    "currency": "EUR",
+                }
+            ]
+        elif "COUNT(*) AS total_count" in statement:
             self.rows = [{"total_count": 1, "total_value": "4.50", "currency": "EUR"}]
         if "tracked_entries" in statement and "snapshots" in statement:
             self.rows = [{"cards": 2, "tracked_entries": 3, "snapshots": 5}]
@@ -188,6 +198,23 @@ class StorageTest(unittest.TestCase):
         self.assertIn("WHERE entry_id = %s", statement)
         self.assertEqual(parameters[0], "entry-1")
         self.assertEqual(history[0].price, Decimal("0.25"))
+
+    def test_history_page_for_entry_limits_newest_snapshots_and_counts_total(self):
+        connection = FakeConnection()
+        store = PriceStore(connection=connection)
+
+        page = store.history_page_for_entry("entry-1", limit=100, offset=200)
+
+        count_statement, count_parameters = connection.cursor_instance.statements[-2]
+        page_statement, page_parameters = connection.cursor_instance.statements[-1]
+        self.assertIn("COUNT(*) AS total_count", count_statement)
+        self.assertEqual(count_parameters[0], "entry-1")
+        self.assertIn("WITH selected AS", page_statement)
+        self.assertIn("ORDER BY captured_at DESC, id DESC", page_statement)
+        self.assertIn("LIMIT %s OFFSET %s", page_statement)
+        self.assertEqual(page_parameters, ["entry-1", 100, 200])
+        self.assertEqual(page.total_count, 3)
+        self.assertEqual(page.rows[0].price, Decimal("0.25"))
 
     def test_value_history_rows_calculates_total_values_over_time(self):
         connection = FakeConnection(

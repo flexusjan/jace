@@ -73,6 +73,12 @@ class HistoryPoint:
 
 
 @dataclass(frozen=True)
+class HistoryPage:
+    rows: list[HistoryPoint]
+    total_count: int
+
+
+@dataclass(frozen=True)
 class ValueHistoryPoint:
     captured_at: datetime
     total_value: Decimal | None
@@ -463,6 +469,49 @@ class PriceStore:
             ]
         self.connection.commit()
         return rows
+
+    def history_page_for_entry(self, entry_id: str, *, limit: int | None = None, offset: int = 0) -> HistoryPage:
+        parameters: list[Any] = [entry_id]
+        page_sql = ""
+        if limit is not None:
+            page_sql = "LIMIT %s OFFSET %s"
+            parameters.extend([limit, max(offset, 0)])
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS total_count
+                FROM price_snapshots
+                WHERE entry_id = %s
+                """,
+                (entry_id,),
+            )
+            summary_rows = cursor.fetchall()
+            cursor.execute(
+                f"""
+                WITH selected AS (
+                    SELECT captured_at, price, currency, id
+                    FROM price_snapshots
+                    WHERE entry_id = %s
+                    ORDER BY captured_at DESC, id DESC
+                    {page_sql}
+                )
+                SELECT captured_at, price, currency
+                FROM selected
+                ORDER BY captured_at ASC, id ASC
+                """,
+                parameters,
+            )
+            rows = [
+                HistoryPoint(
+                    captured_at=values["captured_at"],
+                    price=decimal_or_none(values["price"]),
+                    currency=values["currency"],
+                )
+                for values in (dict(row) for row in cursor.fetchall())
+            ]
+        self.connection.commit()
+        summary = dict(summary_rows[0]) if summary_rows else {}
+        return HistoryPage(rows=rows, total_count=int(summary.get("total_count") or len(rows)))
 
     def value_history_rows(self) -> list[ValueHistoryPoint]:
         with self.connection.cursor() as cursor:

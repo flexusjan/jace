@@ -15,6 +15,7 @@ const state = {
   histories: new Map(),
   historyErrors: new Map(),
   historyRequests: new Map(),
+  historyPagination: new Map(),
   valueHistory: null,
   valueHistoryError: "",
   detailRenderKey: ""
@@ -211,6 +212,7 @@ async function loadCards() {
     state.histories.clear();
     state.historyErrors.clear();
     state.historyRequests.clear();
+    state.historyPagination.clear();
     state.detailRenderKey = "";
     reconcileSelection();
     if (!state.selectedId && state.cards.length > 0) {
@@ -225,7 +227,7 @@ async function loadCards() {
 
 async function loadValueHistory() {
   try {
-    const response = await fetch("/api/value-history", { cache: "no-store" });
+    const response = await fetch("/api/collection/value-history", { cache: "no-store" });
     const payload = await response.json();
     if (!response.ok) {
       throw new Error(payload.error || `Request failed with status ${response.status}`);
@@ -786,9 +788,10 @@ function renderDetail(card) {
   }
 
   const history = state.histories.get(card.id);
+  const pagination = state.historyPagination.get(card.id);
   const error = state.historyErrors.get(card.id);
   const loading = state.historyRequests.has(card.id);
-  const renderKey = `${card.id}:${error || (history ? history.length : loading ? "loading" : "missing")}`;
+  const renderKey = `${card.id}:${error || (history ? history.length : loading ? "loading" : "missing")}:${pagination ? pagination.total_count : ""}`;
   if (state.detailRenderKey === renderKey) {
     return;
   }
@@ -804,6 +807,7 @@ function renderDetail(card) {
     <h2>${escapeHtml(card.name)}</h2>
     <p class="muted">${escapeHtml(card.set_code.toUpperCase())} #${escapeHtml(card.collector_number)} · ${card.quantity} tracked · ${escapeHtml(conditionLabel(card.condition))} · ${escapeHtml(card.language || "English")} · ${escapeHtml(finishLabel(card.finish))}</p>
     ${historyStatus(history, points, card.currency, error)}
+    ${historyPaginationStatus(history, pagination)}
     <ul class="history-list">
       ${(history || []).slice().reverse().map(point => `
         <li>
@@ -816,17 +820,24 @@ function renderDetail(card) {
 }
 
 async function loadCardHistory(cardId) {
-  const request = fetch(`/api/cards/${encodeURIComponent(cardId)}/history`, { cache: "no-store" })
+  const params = new URLSearchParams({ page: "1", page_size: "100" });
+  const request = fetch(`/api/cards/${encodeURIComponent(cardId)}/price-history?${params.toString()}`, { cache: "no-store" })
     .then(async response => {
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload.error || `Request failed with status ${response.status}`);
       }
       state.histories.set(cardId, payload.history || []);
+      if (payload.pagination) {
+        state.historyPagination.set(cardId, payload.pagination);
+      } else {
+        state.historyPagination.delete(cardId);
+      }
       state.historyErrors.delete(cardId);
     })
     .catch(error => {
       state.historyErrors.set(cardId, error.message);
+      state.historyPagination.delete(cardId);
     })
     .finally(() => {
       state.historyRequests.delete(cardId);
@@ -846,6 +857,17 @@ function historyStatus(history, points, currency, error) {
     return `<p class="muted">Loading price history...</p>`;
   }
   return chartSvg(points, currency);
+}
+
+function historyPaginationStatus(history, pagination) {
+  if (!history || !pagination) {
+    return "";
+  }
+  const total = Number(pagination.total_count || history.length);
+  if (total <= history.length) {
+    return "";
+  }
+  return `<p class="muted">Showing latest ${history.length} of ${total} price snapshots.</p>`;
 }
 
 function renderPortfolioChange() {

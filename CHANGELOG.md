@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0 - 2026-05-04
+
+- Add clearer API endpoints for price history:
+  - `/api/cards/{tracking_id}/price-history` for a tracked card entry.
+  - `/api/collection/value-history` for collection-level value snapshots.
+- Keep the previous `/api/cards/{tracking_id}/history` and `/api/value-history` endpoints available for compatibility.
+- Add pagination metadata and `page` / `page_size` query parameters for card price history responses.
+- Limit the frontend card detail panel to the latest 100 price snapshots by default and show a note when more snapshots exist.
+
 ## 1.0.6 - 2026-05-04
 
 - Re-publish the Docker image release using the configured `GHCR_TOKEN` package write credentials.

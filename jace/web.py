@@ -27,7 +27,7 @@ from .moxfield import MoxfieldClient, MoxfieldError
 from .parser import parse_card_csv, parse_card_text
 from .refresher import PriceRefreshScheduler
 from .scryfall import ScryfallError
-from .storage import CollectionStats, HistoryPoint, PriceStore, ReportRow, ValueHistoryPoint
+from .storage import CollectionStats, HistoryPage, HistoryPoint, PriceStore, ReportRow, ValueHistoryPoint
 
 STATIC_DIR = Path(__file__).with_name("static")
 ALLOWED_IMAGE_HOST_SUFFIX = ".scryfall.io"
@@ -82,11 +82,19 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
             )
             self._send_json(cards_payload(report.rows, pagination=report_pagination_payload(report, page, page_size)))
             return
-        if path.startswith("/api/cards/") and path.endswith("/history"):
-            entry_id = unquote(path.removeprefix("/api/cards/").removesuffix("/history"))
-            self._send_json(card_history_payload(self.store.history_rows_for_entry(entry_id)))
+        if path.startswith("/api/cards/") and (path.endswith("/history") or path.endswith("/price-history")):
+            suffix = "/price-history" if path.endswith("/price-history") else "/history"
+            entry_id = unquote(path.removeprefix("/api/cards/").removesuffix(suffix))
+            params = parse_qs(urlparse(self.path).query)
+            if "page" in params or "page_size" in params or suffix == "/price-history":
+                page = query_int(params, "page", 1, minimum=1)
+                page_size = query_int(params, "page_size", 100, minimum=1, maximum=500)
+                history_page = self.store.history_page_for_entry(entry_id, limit=page_size, offset=(page - 1) * page_size)
+                self._send_json(card_history_payload(history_page.rows, pagination=history_pagination_payload(history_page, page, page_size)))
+            else:
+                self._send_json(card_history_payload(self.store.history_rows_for_entry(entry_id)))
             return
-        if path == "/api/value-history":
+        if path in {"/api/value-history", "/api/collection/value-history"}:
             self._send_json(value_history_payload(self.store.value_history_rows()))
             return
         if path == "/api/refresh-status":
@@ -399,6 +407,16 @@ def report_pagination_payload(report: Any, page: int, page_size: int) -> dict[st
     }
 
 
+def history_pagination_payload(history_page: HistoryPage, page: int, page_size: int) -> dict[str, Any]:
+    total_pages = max(1, (history_page.total_count + page_size - 1) // page_size)
+    return {
+        "page": min(page, total_pages),
+        "page_size": page_size,
+        "total_count": history_page.total_count,
+        "total_pages": total_pages,
+    }
+
+
 def query_str(params: dict[str, list[str]], name: str, default: str) -> str:
     values = params.get(name)
     return values[0].strip() if values and values[0].strip() else default
@@ -419,8 +437,8 @@ def query_int(params: dict[str, list[str]], name: str, default: int, *, minimum:
     return value
 
 
-def card_history_payload(history: list[HistoryPoint]) -> dict[str, Any]:
-    return {
+def card_history_payload(history: list[HistoryPoint], pagination: dict[str, Any] | None = None) -> dict[str, Any]:
+    payload = {
         "history": [
             {
                 "captured_at": point.captured_at.isoformat(timespec="seconds"),
@@ -430,6 +448,9 @@ def card_history_payload(history: list[HistoryPoint]) -> dict[str, Any]:
             for point in history
         ]
     }
+    if pagination is not None:
+        payload["pagination"] = pagination
+    return payload
 
 
 def value_history_payload(history: list[ValueHistoryPoint]) -> dict[str, Any]:

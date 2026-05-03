@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from jace.models import CardRequest
 from jace.refresher import RefreshStatus, refresh_status_payload
-from jace.storage import CollectionStats, HistoryPoint, ReportPage, ReportRow, ValueHistoryPoint
+from jace.storage import CollectionStats, HistoryPage, HistoryPoint, ReportPage, ReportRow, ValueHistoryPoint
 from jace.web import (
     ImportJob,
     ImportJobs,
@@ -16,6 +16,7 @@ from jace.web import (
     card_history_payload,
     cards_payload,
     format_collection_stats,
+    history_pagination_payload,
     import_payload,
     import_requests_from_payload,
     report_pagination_payload,
@@ -119,6 +120,16 @@ class WebPayloadTest(unittest.TestCase):
         )
 
         self.assertEqual(payload["history"][0]["price"], "0.50")
+
+    def test_card_history_payload_includes_pagination_metadata(self):
+        history_page = HistoryPage(rows=[], total_count=201)
+
+        payload = card_history_payload([], pagination=history_pagination_payload(history_page, page=2, page_size=100))
+
+        self.assertEqual(payload["pagination"]["page"], 2)
+        self.assertEqual(payload["pagination"]["page_size"], 100)
+        self.assertEqual(payload["pagination"]["total_count"], 201)
+        self.assertEqual(payload["pagination"]["total_pages"], 3)
 
     def test_value_history_payload_formats_points(self):
         payload = value_history_payload(
