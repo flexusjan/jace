@@ -50,12 +50,13 @@ jobs:
           ref: ${{ steps.release.outputs.tag }}
 
       - name: Log in to GHCR
-        shell: bash
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" \
-            | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
 
-      - name: Build image
+      - name: Build and publish image
         shell: bash
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/jace"
@@ -70,17 +71,9 @@ jobs:
             tags+=(--tag "$image:latest")
           fi
 
-          docker build "${tags[@]}" .
-
-      - name: Publish image
-        shell: bash
-        run: |
-          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/jace"
-          version="${{ steps.release.outputs.version }}"
-
-          docker push "$image:$version"
-          docker push "$image:v$version"
-
-          if [[ "${{ github.event_name }}" != "workflow_dispatch" || "${{ inputs.push_latest }}" == "true" ]]; then
-            docker push "$image:latest"
-          fi
+          docker build \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.version=$version" \
+            "${tags[@]}" \
+            .
+          docker push --all-tags "$image"

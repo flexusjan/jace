@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.5 - 2026-05-03
+
+- Make the Docker image publish workflow compatible with a `GHCR_TOKEN` secret and attach repository metadata labels to published images.
+
 ## 1.0.4 - 2026-05-03
 
 - Re-publish the 1.0.3 release contents after re-enabling GitHub Actions so the Docker image publish workflow can run.
