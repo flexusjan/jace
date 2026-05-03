@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import base64
 import binascii
+import errno
 import hmac
 import threading
 import uuid
@@ -30,6 +31,8 @@ from .storage import HistoryPoint, PriceStore, ReportRow, ValueHistoryPoint
 
 STATIC_DIR = Path(__file__).with_name("static")
 ALLOWED_IMAGE_HOST_SUFFIX = ".scryfall.io"
+CLIENT_DISCONNECT_ERRORS = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)
+CLIENT_DISCONNECT_ERRNOS = {errno.EPIPE, errno.ECONNRESET, errno.ECONNABORTED}
 
 
 class PriceTrackerHandler(BaseHTTPRequestHandler):
@@ -211,13 +214,15 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
 
     def _send_auth_required(self) -> None:
         body = b"Authentication required\n"
-        self.send_response(HTTPStatus.UNAUTHORIZED)
-        self.send_header("WWW-Authenticate", 'Basic realm="jace", charset="UTF-8"')
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        self._send_response(
+            body,
+            HTTPStatus.UNAUTHORIZED,
+            (
+                ("WWW-Authenticate", 'Basic realm="jace", charset="UTF-8"'),
+                ("Content-Type", "text/plain; charset=utf-8"),
+                ("Cache-Control", "no-store"),
+            ),
+        )
 
     def _handle_delete_cards(self) -> None:
         try:
@@ -280,37 +285,36 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
                 return
             self.store.save_image(scryfall_id, content_type, data)
 
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Cache-Control", "public, max-age=31536000, immutable")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+        self._send_response(
+            data,
+            HTTPStatus.OK,
+            (("Content-Type", content_type), ("Cache-Control", "public, max-age=31536000, immutable")),
+        )
 
     def _send_file(self, path: Path, content_type: str) -> None:
         body = path.read_bytes()
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        self._send_response(body, HTTPStatus.OK, (("Content-Type", content_type),))
 
     def _send_index(self) -> None:
         body = rendered_index_html(app_config().dark_theme).encode("utf-8")
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        self._send_response(body, HTTPStatus.OK, (("Content-Type", "text/html; charset=utf-8"),))
 
     def _send_json(self, payload: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload, default=json_default).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        self._send_response(body, status, (("Content-Type", "application/json; charset=utf-8"), ("Cache-Control", "no-store")))
+
+    def _send_response(self, body: bytes, status: HTTPStatus, headers: tuple[tuple[str, str], ...]) -> None:
+        try:
+            self.send_response(status)
+            for name, value in headers:
+                self.send_header(name, value)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except OSError as exc:
+            if isinstance(exc, CLIENT_DISCONNECT_ERRORS) or exc.errno in CLIENT_DISCONNECT_ERRNOS:
+                return
+            raise
 
 
 def serve(host: str, port: int, database_url: str | None) -> int:

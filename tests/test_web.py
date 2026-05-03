@@ -10,6 +10,7 @@ from jace.storage import HistoryPoint, ReportPage, ReportRow, ValueHistoryPoint
 from jace.web import (
     ImportJob,
     ImportJobs,
+    PriceTrackerHandler,
     TooManyJobsError,
     basic_auth_credentials,
     card_history_payload,
@@ -249,6 +250,19 @@ class WebPayloadTest(unittest.TestCase):
         self.assertTrue(scryfall_image_url_allowed("https://cards.scryfall.io/normal/front/card.jpg"))
         self.assertFalse(scryfall_image_url_allowed("http://cards.scryfall.io/normal/front/card.jpg"))
         self.assertFalse(scryfall_image_url_allowed("https://evil-scryfall.io/normal/front/card.jpg"))
+
+    def test_send_json_ignores_client_disconnect(self):
+        class BrokenWriter:
+            def write(self, body):
+                raise BrokenPipeError()
+
+        handler = PriceTrackerHandler.__new__(PriceTrackerHandler)
+        handler.wfile = BrokenWriter()
+        handler.send_response = lambda status: None
+        handler.send_header = lambda name, value: None
+        handler.end_headers = lambda: None
+
+        handler._send_json({"ok": True})
 
     def test_import_jobs_rejects_when_active_limit_is_reached(self):
         jobs = ImportJobs()

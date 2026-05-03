@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1 - 2026-05-03
+
+- Treat browser or proxy disconnects during HTTP response writes as normal client disconnects instead of logging noisy `BrokenPipeError` tracebacks.
+
 ## 1.0.0 - 2026-05-03
 
 Initial stable release.
