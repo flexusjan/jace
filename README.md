@@ -36,8 +36,7 @@ The stack starts exactly two containers:
 - `jace` with the web app
 
 Portainer does not need a local build. The app container uses the image from
-`JACE_IMAGE`. Set it to the full image name that Portainer should deploy, for
-example `registry.example.com/jace:latest`.
+`JACE_IMAGE`, which defaults to `ghcr.io/flexusjan/jace:latest`.
 
 The Postgres container uses `postgres:18-alpine` by default. The Compose volume
 is mounted at `/var/lib/postgresql` so it matches the data directory layout used

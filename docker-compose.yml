@@ -15,7 +15,7 @@ services:
       retries: 10
 
   jace:
-    image: ${JACE_IMAGE:-jace:latest}
+    image: ${JACE_IMAGE:-ghcr.io/flexusjan/jace:latest}
     container_name: jace
     depends_on:
       db:
