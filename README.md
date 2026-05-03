@@ -65,7 +65,7 @@ variables:
 
 ```env
 JACE_AUTH_USERNAME=jace
-JACE_AUTH_PASSWORD=beleren
+JACE_AUTH_PASSWORD=change-me-too
 ```
 
 Use Basic Auth behind HTTPS when the app is reachable outside a trusted private
