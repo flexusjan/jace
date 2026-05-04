@@ -285,13 +285,13 @@ class WebPayloadTest(unittest.TestCase):
 
         handler._send_json({"ok": True})
 
+    @patch.dict("os.environ", {"JACE_MAX_IMPORT_JOBS": "1"}, clear=False)
     def test_import_jobs_rejects_when_active_limit_is_reached(self):
         jobs = ImportJobs()
         jobs._jobs["job-1"] = ImportJob(id="job-1", total=1, currency="eur", status="running")
 
-        with patch.dict("os.environ", {"JACE_MAX_IMPORT_JOBS": "1"}, clear=False):
-            with self.assertRaises(TooManyJobsError):
-                jobs.create([CardRequest(quantity=1, name="Sol Ring")], "eur", "postgresql://example")
+        with self.assertRaises(TooManyJobsError):
+            jobs.create([CardRequest(quantity=1, name="Sol Ring")], "eur", "postgresql://example")
 
 
 if __name__ == "__main__":

@@ -5,30 +5,30 @@ from jace.config import app_config
 
 
 class ConfigTest(unittest.TestCase):
+    @patch.dict(
+        "os.environ",
+        {
+            "JACE_DEFAULT_CURRENCY": "usd",
+            "JACE_WEB_HOST": "127.0.0.1",
+            "JACE_WEB_PORT": "9000",
+            "JACE_REFRESH_INTERVAL_SECONDS": "120",
+            "JACE_SCRYFALL_BULK_SIZE": "10",
+            "JACE_SCRYFALL_REQUEST_INTERVAL_SECONDS": "0.2",
+            "JACE_SCRYFALL_COLLECTION_REQUEST_INTERVAL_SECONDS": "0.8",
+            "JACE_SCRYFALL_TIMEOUT_SECONDS": "5",
+            "JACE_IMAGE_FETCH_TIMEOUT_SECONDS": "6",
+            "JACE_AUTH_USERNAME": "alice",
+            "JACE_AUTH_PASSWORD": "secret",
+            "JACE_MAX_REQUEST_BODY_BYTES": "2048",
+            "JACE_MAX_IMPORT_CARDS": "20",
+            "JACE_MAX_IMPORT_JOBS": "2",
+            "JACE_MAX_IMAGE_BYTES": "4096",
+            "JACE_DARK_THEME": "false",
+        },
+        clear=False,
+    )
     def test_app_config_uses_environment_values(self):
-        with patch.dict(
-            "os.environ",
-            {
-                "JACE_DEFAULT_CURRENCY": "usd",
-                "JACE_WEB_HOST": "127.0.0.1",
-                "JACE_WEB_PORT": "9000",
-                "JACE_REFRESH_INTERVAL_SECONDS": "120",
-                "JACE_SCRYFALL_BULK_SIZE": "10",
-                "JACE_SCRYFALL_REQUEST_INTERVAL_SECONDS": "0.2",
-                "JACE_SCRYFALL_COLLECTION_REQUEST_INTERVAL_SECONDS": "0.8",
-                "JACE_SCRYFALL_TIMEOUT_SECONDS": "5",
-                "JACE_IMAGE_FETCH_TIMEOUT_SECONDS": "6",
-                "JACE_AUTH_USERNAME": "alice",
-                "JACE_AUTH_PASSWORD": "secret",
-                "JACE_MAX_REQUEST_BODY_BYTES": "2048",
-                "JACE_MAX_IMPORT_CARDS": "20",
-                "JACE_MAX_IMPORT_JOBS": "2",
-                "JACE_MAX_IMAGE_BYTES": "4096",
-                "JACE_DARK_THEME": "false",
-            },
-            clear=False,
-        ):
-            config = app_config()
+        config = app_config()
 
         self.assertEqual(config.default_currency, "usd")
         self.assertEqual(config.web_host, "127.0.0.1")
@@ -47,20 +47,20 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(config.max_image_bytes, 4096)
         self.assertFalse(config.dark_theme)
 
+    @patch.dict("os.environ", {"JACE_SCRYFALL_BULK_SIZE": "100"}, clear=False)
     def test_rejects_invalid_bulk_size(self):
-        with patch.dict("os.environ", {"JACE_SCRYFALL_BULK_SIZE": "100"}, clear=False):
-            with self.assertRaisesRegex(ValueError, "JACE_SCRYFALL_BULK_SIZE"):
-                app_config()
+        with self.assertRaisesRegex(ValueError, "JACE_SCRYFALL_BULK_SIZE"):
+            app_config()
 
+    @patch.dict("os.environ", {"JACE_AUTH_USERNAME": "alice", "JACE_AUTH_PASSWORD": ""}, clear=False)
     def test_rejects_partial_auth_config(self):
-        with patch.dict("os.environ", {"JACE_AUTH_USERNAME": "alice", "JACE_AUTH_PASSWORD": ""}, clear=False):
-            with self.assertRaisesRegex(ValueError, "JACE_AUTH_USERNAME"):
-                app_config()
+        with self.assertRaisesRegex(ValueError, "JACE_AUTH_USERNAME"):
+            app_config()
 
+    @patch.dict("os.environ", {"JACE_DARK_THEME": "maybe"}, clear=False)
     def test_rejects_invalid_dark_theme_flag(self):
-        with patch.dict("os.environ", {"JACE_DARK_THEME": "maybe"}, clear=False):
-            with self.assertRaisesRegex(ValueError, "JACE_DARK_THEME"):
-                app_config()
+        with self.assertRaisesRegex(ValueError, "JACE_DARK_THEME"):
+            app_config()
 
 
 if __name__ == "__main__":

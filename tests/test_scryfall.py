@@ -84,19 +84,19 @@ class ScryfallTest(unittest.TestCase):
         self.assertIsNotNone(matched)
         self.assertEqual([card["id"] for card in matched], ["card-1", "card-2"])
 
+    @patch.dict(
+        "os.environ",
+        {
+            "JACE_SCRYFALL_BASE_URL": "https://scryfall.example",
+            "JACE_SCRYFALL_BULK_SIZE": "12",
+            "JACE_SCRYFALL_REQUEST_INTERVAL_SECONDS": "0.3",
+            "JACE_SCRYFALL_COLLECTION_REQUEST_INTERVAL_SECONDS": "0.9",
+            "JACE_SCRYFALL_TIMEOUT_SECONDS": "7",
+        },
+        clear=False,
+    )
     def test_client_uses_environment_defaults(self):
-        with patch.dict(
-            "os.environ",
-            {
-                "JACE_SCRYFALL_BASE_URL": "https://scryfall.example",
-                "JACE_SCRYFALL_BULK_SIZE": "12",
-                "JACE_SCRYFALL_REQUEST_INTERVAL_SECONDS": "0.3",
-                "JACE_SCRYFALL_COLLECTION_REQUEST_INTERVAL_SECONDS": "0.9",
-                "JACE_SCRYFALL_TIMEOUT_SECONDS": "7",
-            },
-            clear=False,
-        ):
-            client = ScryfallClient()
+        client = ScryfallClient()
 
         self.assertEqual(client.base_url, "https://scryfall.example")
         self.assertEqual(client.collection_batch_size, 12)
