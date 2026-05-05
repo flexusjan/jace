@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.1 - 2026-05-05
+
+- Add Renovate configuration for Python dependencies, container images, Docker Compose defaults, and GitHub Actions.
+- Add a GitHub Actions test workflow and run the Python test suite before publishing Docker images.
+- Update Python container and GitHub Actions versions used by CI and image publishing.
+- Bump the psycopg dependency lower bound to `3.3.4`.
+- Expand test coverage for exchange-rate conversion and price refresh behavior.
+- Refresh README wording and dependency update documentation.
+
 ## 1.1.0 - 2026-05-04
 
 - Add clearer API endpoints for price history:
