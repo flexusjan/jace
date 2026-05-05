@@ -8,7 +8,7 @@ version = "1.1.0"
 description = "Track Magic: The Gathering card prices with Scryfall snapshots."
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
-dependencies = ["psycopg[binary]>=3.2,<4"]
+dependencies = ["psycopg[binary]>=3.3.4,<4"]
 
 [project.scripts]
 jace = "jace.cli:main"
