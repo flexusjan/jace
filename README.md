@@ -203,6 +203,16 @@ jace web --host 127.0.0.1 --port 8180
 python -m unittest discover -s tests
 ```
 
+## Dependency Updates
+
+Renovate is configured in [renovate.json](renovate.json). Once the Renovate
+GitHub App is enabled for this repository, it opens update PRs for Python
+dependencies in `pyproject.toml`, container images in `Dockerfile` and
+`docker-compose.yml`, and GitHub Actions.
+
+Renovate also creates a Dependency Dashboard issue for manually tracking,
+retrying, or approving dependency updates.
+
 ## License
 
 MIT, see [LICENSE](LICENSE).
