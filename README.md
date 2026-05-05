@@ -1,6 +1,6 @@
-# jace
+# Jace, the Price Tracker
 
-jace tracks Magic: The Gathering card prices. It reads card lists, fetches
+Jace tracks Magic: The Gathering card prices. It reads card lists, fetches
 current prices from the public Scryfall API, stores snapshots in Postgres, and
 shows the price history in the browser or terminal.
 
