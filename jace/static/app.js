@@ -807,7 +807,6 @@ function renderDetail(card) {
           <div><dt>Language</dt><dd>${escapeHtml(card.language || "English")}</dd></div>
           <div><dt>Finish</dt><dd>${escapeHtml(finishLabel(card.finish))}</dd></div>
           <div><dt>Total value</dt><dd>${money(totalPrice(card), card.currency)}</dd></div>
-          <div><dt>Captured</dt><dd>${formatDate(card.latest_captured_at)}</dd></div>
         </dl>
         ${scryfallLink(card)}
       </div>

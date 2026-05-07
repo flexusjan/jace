@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.2 - 2026-05-08
+
+- Remove the captured timestamp from the desktop card detail panel to give the price history section more breathing room.
+
 ## 1.2.1 - 2026-05-07
 
 - Restore normal readable text sizes in the desktop card detail panel.
