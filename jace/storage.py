@@ -41,6 +41,12 @@ ON price_snapshots(scryfall_id, captured_at);
 
 CREATE INDEX IF NOT EXISTS idx_price_snapshots_entry_time
 ON price_snapshots(entry_id, captured_at);
+
+CREATE INDEX IF NOT EXISTS idx_price_snapshots_entry_latest
+ON price_snapshots(entry_id, captured_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_price_snapshots_entry_first
+ON price_snapshots(entry_id, captured_at ASC, id ASC);
 """
 
 
@@ -202,7 +208,7 @@ class PriceStore:
         sort: str = "name",
         direction: str = "asc",
     ) -> ReportPage:
-        order_by = report_order_by(sort, direction)
+        order_by = report_page_order_by(sort, direction)
         filter_sql = ""
         parameters: list[Any] = []
         if search:
@@ -232,60 +238,59 @@ class PriceStore:
                     FROM price_snapshots
                     ORDER BY entry_id, captured_at ASC, id ASC
                 )
-                SELECT
-                    latest.entry_id AS id,
-                    c.scryfall_id,
-                    c.name,
-                    c.set_code,
-                    c.collector_number,
-                    c.source_url,
-                    c.image_data IS NOT NULL AS has_cached_image,
-                    c.image_url IS NOT NULL AS has_image_url,
-                    latest.quantity,
-                    latest.condition,
-                    latest.language,
-                    latest.finish,
-                    latest.currency,
-                    latest.price AS latest_price,
-                    latest.captured_at AS latest_captured_at,
-                    first.price AS first_price,
-                    first.captured_at AS first_captured_at
-                FROM latest
-                JOIN cards c ON c.scryfall_id = latest.scryfall_id
-                LEFT JOIN first ON first.entry_id = latest.entry_id
-                {filter_sql}
-                ORDER BY {order_by}
-                {page_sql}
+                filtered AS (
+                    SELECT
+                        latest.entry_id AS id,
+                        c.scryfall_id,
+                        c.name,
+                        c.set_code,
+                        c.collector_number,
+                        c.source_url,
+                        c.image_data IS NOT NULL AS has_cached_image,
+                        c.image_url IS NOT NULL AS has_image_url,
+                        latest.quantity,
+                        latest.condition,
+                        latest.language,
+                        latest.finish,
+                        latest.currency,
+                        latest.price AS latest_price,
+                        latest.captured_at AS latest_captured_at,
+                        first.price AS first_price,
+                        first.captured_at AS first_captured_at,
+                        latest.price * latest.quantity AS total_price_sort,
+                        latest.price - first.price AS change_sort
+                    FROM latest
+                    JOIN cards c ON c.scryfall_id = latest.scryfall_id
+                    LEFT JOIN first ON first.entry_id = latest.entry_id
+                    {filter_sql}
+                ),
+                summary AS (
+                    SELECT
+                        COUNT(*) AS summary_total_count,
+                        SUM(latest_price * quantity) AS summary_total_value,
+                        CASE WHEN COUNT(DISTINCT currency) = 1 THEN MIN(currency) ELSE NULL END AS summary_currency
+                    FROM filtered
+                ),
+                page AS (
+                    SELECT *
+                    FROM filtered
+                    ORDER BY {order_by}
+                    {page_sql}
+                )
+                SELECT page.*, summary.summary_total_count, summary.summary_total_value, summary.summary_currency
+                FROM summary
+                LEFT JOIN page ON TRUE
                 """,
                 parameters,
             )
-            rows = [row_to_report(row) for row in cursor.fetchall()]
-            cursor.execute(
-                f"""
-                WITH latest AS (
-                    SELECT DISTINCT ON (entry_id)
-                        entry_id, scryfall_id, quantity, currency, price
-                    FROM price_snapshots
-                    ORDER BY entry_id, captured_at DESC, id DESC
-                )
-                SELECT
-                    COUNT(*) AS total_count,
-                    SUM(latest.price * latest.quantity) AS total_value,
-                    CASE WHEN COUNT(DISTINCT latest.currency) = 1 THEN MIN(latest.currency) ELSE NULL END AS currency
-                FROM latest
-                JOIN cards c ON c.scryfall_id = latest.scryfall_id
-                {filter_sql}
-                """,
-                parameters[:3] if search else [],
-            )
-            summary_rows = cursor.fetchall()
+            result_rows = [dict(row) for row in cursor.fetchall()]
         self.connection.commit()
-        summary = dict(summary_rows[0]) if summary_rows else {}
+        summary = result_rows[0] if result_rows else {}
         return ReportPage(
-            rows=rows,
-            total_count=int(summary.get("total_count") or 0),
-            total_value=decimal_or_none(summary.get("total_value")),
-            currency=summary.get("currency"),
+            rows=[row_to_report(row) for row in result_rows if row.get("id") is not None],
+            total_count=int(summary.get("summary_total_count") or 0),
+            total_value=decimal_or_none(summary.get("summary_total_value")),
+            currency=summary.get("summary_currency"),
         )
 
     def collection_stats(self) -> CollectionStats:
@@ -518,36 +523,63 @@ class PriceStore:
             cursor.execute(
                 """
                 WITH first_snapshots AS (
-                    SELECT entry_id, MIN(captured_at) AS first_captured_at
+                    SELECT DISTINCT ON (entry_id)
+                        entry_id, captured_at AS first_captured_at
                     FROM price_snapshots
-                    GROUP BY entry_id
+                    ORDER BY entry_id, captured_at ASC, id ASC
                 ),
                 collection_start AS (
                     SELECT MAX(first_captured_at) AS captured_at
                     FROM first_snapshots
                 ),
-                value_points AS (
-                    SELECT captured_at
-                    FROM collection_start
-                    WHERE captured_at IS NOT NULL
-                    UNION
+                latest_point AS (
                     SELECT MAX(captured_at) AS captured_at
                     FROM price_snapshots
-                )
-                SELECT
-                    value_points.captured_at,
-                    SUM(latest.price * latest.quantity) AS total_value,
-                    CASE WHEN COUNT(DISTINCT latest.currency) = 1 THEN MIN(latest.currency) ELSE NULL END AS currency
-                FROM value_points
-                JOIN LATERAL (
+                ),
+                start_collection AS (
+                    SELECT DISTINCT ON (ps.entry_id)
+                        ps.entry_id, ps.quantity, ps.currency, ps.price
+                    FROM price_snapshots ps
+                    CROSS JOIN collection_start
+                    WHERE collection_start.captured_at IS NOT NULL
+                      AND ps.captured_at <= collection_start.captured_at
+                    ORDER BY ps.entry_id, ps.captured_at DESC, ps.id DESC
+                ),
+                latest_collection AS (
                     SELECT DISTINCT ON (entry_id)
                         entry_id, quantity, currency, price
                     FROM price_snapshots
-                    WHERE captured_at <= value_points.captured_at
                     ORDER BY entry_id, captured_at DESC, id DESC
-                ) latest ON TRUE
-                WHERE value_points.captured_at IS NOT NULL
-                GROUP BY value_points.captured_at
+                ),
+                start_value AS (
+                    SELECT
+                        collection_start.captured_at,
+                        SUM(start_collection.price * start_collection.quantity) AS total_value,
+                        CASE WHEN COUNT(DISTINCT start_collection.currency) = 1 THEN MIN(start_collection.currency) ELSE NULL END AS currency
+                    FROM collection_start
+                    JOIN start_collection ON TRUE
+                    GROUP BY collection_start.captured_at
+                ),
+                latest_value AS (
+                    SELECT
+                        latest_point.captured_at,
+                        SUM(latest_collection.price * latest_collection.quantity) AS total_value,
+                        CASE WHEN COUNT(DISTINCT latest_collection.currency) = 1 THEN MIN(latest_collection.currency) ELSE NULL END AS currency
+                    FROM latest_point
+                    JOIN latest_collection ON TRUE
+                    GROUP BY latest_point.captured_at
+                ),
+                value_points AS (
+                    SELECT * FROM start_value
+                    UNION
+                    SELECT * FROM latest_value
+                )
+                SELECT
+                    captured_at,
+                    total_value,
+                    currency
+                FROM value_points
+                WHERE captured_at IS NOT NULL
                 ORDER BY value_points.captured_at ASC
                 """
             )
@@ -642,6 +674,8 @@ class PriceStore:
                 cursor.execute("ALTER TABLE price_snapshots ADD COLUMN IF NOT EXISTS condition TEXT NOT NULL DEFAULT 'Near Mint'")
                 cursor.execute("ALTER TABLE price_snapshots ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'English'")
                 cursor.execute("ALTER TABLE price_snapshots ADD COLUMN IF NOT EXISTS finish TEXT NOT NULL DEFAULT 'Non-Foil'")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_price_snapshots_entry_latest ON price_snapshots(entry_id, captured_at DESC, id DESC)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_price_snapshots_entry_first ON price_snapshots(entry_id, captured_at ASC, id ASC)")
             self.connection.commit()
         except Exception:
             self.connection.rollback()
@@ -705,25 +739,25 @@ def schema_statements() -> list[str]:
     return [statement.strip() for statement in SCHEMA.split(";") if statement.strip()]
 
 
-def report_order_by(sort: str, direction: str) -> str:
+def report_page_order_by(sort: str, direction: str) -> str:
     sort_columns = {
-        "name": ['c.name COLLATE "C"'],
-        "set": ['c.set_code COLLATE "C"', 'c.collector_number COLLATE "C"'],
-        "quantity": "latest.quantity",
-        "condition": 'latest.condition COLLATE "C"',
-        "language": 'latest.language COLLATE "C"',
-        "finish": 'latest.finish COLLATE "C"',
-        "latest_price": "latest.price",
-        "total_price": "latest.price * latest.quantity",
-        "change": "latest.price - first.price",
-        "latest_captured_at": "latest.captured_at",
+        "name": ['name COLLATE "C"'],
+        "set": ['set_code COLLATE "C"', 'collector_number COLLATE "C"'],
+        "quantity": "quantity",
+        "condition": 'condition COLLATE "C"',
+        "language": 'language COLLATE "C"',
+        "finish": 'finish COLLATE "C"',
+        "latest_price": "latest_price",
+        "total_price": "total_price_sort",
+        "change": "change_sort",
+        "latest_captured_at": "latest_captured_at",
     }
     primary = sort_columns.get(sort, sort_columns["name"])
     sql_direction = "DESC" if direction == "desc" else "ASC"
     nulls = "NULLS LAST"
     primary_columns = primary if isinstance(primary, list) else [primary]
     primary_order = ", ".join(f"{column} {sql_direction} {nulls}" for column in primary_columns)
-    tie_breaker = 'c.name COLLATE "C" ASC, c.set_code COLLATE "C" ASC, c.collector_number COLLATE "C" ASC, latest.condition COLLATE "C" ASC, latest.language COLLATE "C" ASC, latest.finish COLLATE "C" ASC'
+    tie_breaker = 'name COLLATE "C" ASC, set_code COLLATE "C" ASC, collector_number COLLATE "C" ASC, condition COLLATE "C" ASC, language COLLATE "C" ASC, finish COLLATE "C" ASC'
     return f"{primary_order}, {tie_breaker}"
 
 

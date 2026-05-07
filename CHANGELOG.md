@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.4 - 2026-05-07
+
+- Make the desktop card detail panel more compact and remove duplicated detail values.
+- Keep the price history chart fill while removing individual point markers.
+- Speed up card listing responses by sharing page and summary data through one query.
+- Speed up collection value history by avoiding per-point lateral snapshot scans and adding snapshot indexes.
+
 ## 1.1.3 - 2026-05-07
 
 - Restore the desktop card detail view as a right-side panel while keeping the mobile detail view as an overlay.

@@ -830,15 +830,12 @@ function renderDetail(card) {
       <div class="detail-main">
         <h2 id="detail-title">${escapeHtml(card.name)}</h2>
         <dl class="card-facts">
-          <div><dt>Name</dt><dd>${escapeHtml(card.name)}</dd></div>
           <div><dt>Edition</dt><dd>${escapeHtml(card.set_code.toUpperCase())} #${escapeHtml(card.collector_number)}</dd></div>
           <div><dt>Quantity</dt><dd>${card.quantity}</dd></div>
           <div><dt>Condition</dt><dd>${escapeHtml(conditionLabel(card.condition))}</dd></div>
           <div><dt>Language</dt><dd>${escapeHtml(card.language || "English")}</dd></div>
           <div><dt>Finish</dt><dd>${escapeHtml(finishLabel(card.finish))}</dd></div>
-          <div><dt>Latest price</dt><dd>${money(card.latest_price, card.currency)}</dd></div>
           <div><dt>Total value</dt><dd>${money(totalPrice(card), card.currency)}</dd></div>
-          <div><dt>Since first snapshot</dt><dd class="${changeClass(card)}">${signedMoney(card.change, card.currency)}</dd></div>
           <div><dt>Captured</dt><dd>${formatDate(card.latest_captured_at)}</dd></div>
         </dl>
         ${scryfallLink(card)}
@@ -1063,17 +1060,13 @@ function lineChartSvg(points, currency, label, width) {
     const y = height - paddingBottom - ((value - min) / spread) * (height - paddingTop - paddingBottom);
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   });
-  const pointsMarkup = coords.map(coord => {
-    const [x, y] = coord.split(",");
-    return `<circle cx="${x}" cy="${y}" r="3.5" class="chart-dot"></circle>`;
-  }).join("");
-  const areaPoints = singlePoint
-    ? ""
-    : `${paddingX},${height - paddingBottom} ${coords.join(" ")} ${width - paddingX},${height - paddingBottom}`;
   const firstDate = formatShortDate(points[0].captured_at);
   const latestDate = formatShortDate(points[points.length - 1].captured_at);
   const mid = min + spread / 2;
   const gridY = [paddingTop, height - paddingBottom - (height - paddingTop - paddingBottom) / 2, height - paddingBottom];
+  const areaPoints = singlePoint
+    ? ""
+    : `${paddingX},${height - paddingBottom} ${coords.join(" ")} ${width - paddingX},${height - paddingBottom}`;
 
   return `
     <svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(label)}">
@@ -1081,7 +1074,6 @@ function lineChartSvg(points, currency, label, width) {
       ${gridY.map(y => `<line x1="${paddingX}" y1="${y.toFixed(1)}" x2="${width - paddingX}" y2="${y.toFixed(1)}" class="chart-grid"></line>`).join("")}
       ${singlePoint ? "" : `<polygon points="${areaPoints}" class="chart-area"></polygon>`}
       ${singlePoint ? "" : `<polyline points="${coords.join(" ")}" class="chart-line"></polyline>`}
-      ${pointsMarkup}
       <text x="10" y="${paddingTop + 4}" class="chart-label">${money(max, currency)}</text>
       <text x="10" y="${(height - paddingBottom - (height - paddingTop - paddingBottom) / 2 + 4).toFixed(1)}" class="chart-label">${money(mid, currency)}</text>
       <text x="10" y="${height - paddingBottom + 4}" class="chart-label">${money(min, currency)}</text>

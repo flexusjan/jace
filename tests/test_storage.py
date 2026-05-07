@@ -22,7 +22,7 @@ class FakeCursor:
         self.statements.append((statement, parameters))
         if "DELETE FROM cards" in statement and parameters:
             self.rowcount = len(parameters[0])
-        if "COUNT(DISTINCT" in statement and parameters:
+        if "COUNT(DISTINCT" in statement and "AS deleted" in statement and parameters:
             self.rows = [{"deleted": len(parameters[0])}]
         if "COUNT(*) AS total_count" in statement and "FROM price_snapshots" in statement and "WHERE entry_id = %s" in statement:
             self.rows = [{"total_count": 3}]
@@ -235,8 +235,9 @@ class StorageTest(unittest.TestCase):
         self.assertIn("MAX(first_captured_at)", statement)
         self.assertIn("value_points", statement)
         self.assertIn("MAX(captured_at)", statement)
-        self.assertIn("JOIN LATERAL", statement)
-        self.assertIn("SUM(latest.price * latest.quantity)", statement)
+        self.assertIn("start_collection", statement)
+        self.assertIn("latest_collection", statement)
+        self.assertIn("SUM(latest_collection.price * latest_collection.quantity)", statement)
         self.assertEqual(history[0].total_value, Decimal("4.50"))
         self.assertEqual(history[0].currency, "EUR")
 
@@ -262,6 +263,9 @@ class StorageTest(unittest.TestCase):
                     "latest_captured_at": captured_at,
                     "first_price": "1.50",
                     "first_captured_at": captured_at,
+                    "summary_total_count": 1,
+                    "summary_total_value": "4.50",
+                    "summary_currency": "EUR",
                 }
             ]
         )
@@ -269,14 +273,12 @@ class StorageTest(unittest.TestCase):
 
         page = store.latest_page(limit=100, offset=200, search="bolt", sort="total_price", direction="desc")
 
-        page_statement, page_parameters = connection.cursor_instance.statements[-2]
-        summary_statement, summary_parameters = connection.cursor_instance.statements[-1]
+        page_statement, page_parameters = connection.cursor_instance.statements[-1]
         self.assertIn("ILIKE %s", page_statement)
-        self.assertIn("latest.price * latest.quantity DESC", page_statement)
+        self.assertIn("total_price_sort DESC", page_statement)
         self.assertIn("LIMIT %s OFFSET %s", page_statement)
         self.assertEqual(page_parameters[-2:], [100, 200])
-        self.assertIn("COUNT(*) AS total_count", summary_statement)
-        self.assertEqual(summary_parameters, ["%bolt%", "%bolt%", "%bolt%"])
+        self.assertIn("COUNT(*) AS summary_total_count", page_statement)
         self.assertEqual(page.rows[0].name, "Lightning Bolt")
         self.assertEqual(page.total_count, 1)
         self.assertEqual(page.total_value, Decimal("4.50"))
