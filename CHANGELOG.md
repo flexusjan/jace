@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.0 - 2026-05-07
+
+- Fix stale browser asset caching so card detail layout changes load reliably after updates.
+- Keep the desktop card detail panel vertically stacked with the card image above compact metadata.
+- Tighten the desktop card detail panel so the artwork, metadata, and price chart fit without panel scrolling.
+- Remove unused frontend sorting helpers now that card sorting is handled by the server.
+
 ## 1.1.8 - 2026-05-07
 
 - Restore the desktop card detail panel to a larger artwork-first layout with compact details below.

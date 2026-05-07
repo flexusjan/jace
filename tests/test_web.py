@@ -153,6 +153,8 @@ class WebPayloadTest(unittest.TestCase):
     def test_rendered_index_html_uses_configured_theme(self):
         self.assertIn('data-theme="dark"', rendered_index_html(True))
         self.assertIn('data-theme="light"', rendered_index_html(False))
+        self.assertIn('href="/app.css?v=', rendered_index_html(True))
+        self.assertIn('src="/app.js?v=', rendered_index_html(True))
 
     def test_cards_payload_keys_history_by_scryfall_id(self):
         rows = [

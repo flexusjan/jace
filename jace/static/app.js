@@ -696,48 +696,6 @@ function setSort(key) {
   loadCards();
 }
 
-function sortCards(cards) {
-  const direction = state.sortDirection === "asc" ? 1 : -1;
-  return cards.slice().sort((left, right) => {
-    const comparison = compareValues(sortValue(left, state.sortKey), sortValue(right, state.sortKey));
-    if (comparison !== 0) {
-      return comparison * direction;
-    }
-    return compareValues(left.name.toLowerCase(), right.name.toLowerCase());
-  });
-}
-
-function sortValue(card, key) {
-  if (key === "set") {
-    return `${card.set_code} ${card.collector_number}`.toLowerCase();
-  }
-  if (key === "condition" || key === "language" || key === "finish") {
-    return String(card[key] || "").toLowerCase();
-  }
-  if (key === "quantity") {
-    return Number(card.quantity || 0);
-  }
-  if (key === "total_price") {
-    const value = totalPrice(card);
-    return value === null ? Number.NEGATIVE_INFINITY : value;
-  }
-  if (key === "latest_price" || key === "change") {
-    const value = card[key];
-    return value === null || value === undefined ? Number.NEGATIVE_INFINITY : Number(value);
-  }
-  if (key === "latest_captured_at") {
-    return new Date(card.latest_captured_at).getTime();
-  }
-  return String(card.name || "").toLowerCase();
-}
-
-function compareValues(left, right) {
-  if (typeof left === "number" && typeof right === "number") {
-    return left - right;
-  }
-  return String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: "base" });
-}
-
 function defaultSortDirection(key) {
   return ["quantity", "latest_price", "total_price", "change", "latest_captured_at"].includes(key) ? "desc" : "asc";
 }

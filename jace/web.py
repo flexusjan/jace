@@ -19,7 +19,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, unquote, urlparse
 from urllib.request import Request, urlopen
 
-from . import APP_USER_AGENT
+from . import APP_USER_AGENT, __version__
 from .config import SUPPORTED_CURRENCIES, app_config
 from .importer import ImportResult, import_cards
 from .logs import log
@@ -394,7 +394,13 @@ def serve(host: str, port: int, database_url: str | None) -> int:
 
 def rendered_index_html(dark_theme: bool) -> str:
     theme = "dark" if dark_theme else "light"
-    return (STATIC_DIR / "index.html").read_text(encoding="utf-8").replace('data-theme="dark"', f'data-theme="{theme}"')
+    return (
+        (STATIC_DIR / "index.html")
+        .read_text(encoding="utf-8")
+        .replace('data-theme="dark"', f'data-theme="{theme}"')
+        .replace('href="/app.css"', f'href="/app.css?v={__version__}"')
+        .replace('src="/app.js"', f'src="/app.js?v={__version__}"')
+    )
 
 
 def cards_payload(
