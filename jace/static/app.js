@@ -85,6 +85,9 @@ const columns = [
 
 const cardsBody = document.querySelector("#cards");
 const detail = document.querySelector("#detail");
+const detailContent = document.querySelector("#detail-content");
+const detailBackdrop = document.querySelector("#detail-backdrop");
+const detailClose = document.querySelector("#detail-close");
 const search = document.querySelector("#search");
 const priceRefresh = document.querySelector("#price-refresh");
 const refreshState = document.querySelector("#refresh-state");
@@ -154,18 +157,25 @@ pageNext.addEventListener("click", () => {
     loadCards();
   }
 });
+detailClose.addEventListener("click", closeDetail);
+detailBackdrop.addEventListener("click", closeDetail);
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape" && !detail.classList.contains("hidden")) {
+    closeDetail();
+  }
+});
 cardsBody.addEventListener("click", event => {
   const checkbox = event.target.closest(".row-select");
   if (checkbox) {
     return;
   }
   const row = event.target.closest("tr");
-  if (!row) {
+  if (!row || !row.dataset.cardId) {
     return;
   }
   state.selectedId = row.dataset.cardId;
   updateSelectedRows();
-  renderDetail(state.cards.find(card => card.id === state.selectedId));
+  openDetail(state.cards.find(card => card.id === state.selectedId));
 });
 cardsBody.addEventListener("change", event => {
   const checkbox = event.target.closest(".row-select");
@@ -221,7 +231,7 @@ async function loadCards() {
     render();
   } catch (error) {
     renderRowsMessage(`Could not load cards: ${error.message}`);
-    detail.innerHTML = `<h2>Could not load prices</h2><p class="muted">${escapeHtml(error.message)}</p>`;
+    showDetailMessage("Could not load prices", error.message);
   }
 }
 
@@ -540,8 +550,13 @@ function render() {
     ? "n/a"
     : `${Number(state.totalValue).toFixed(2)} ${state.totalCurrency}`.trim();
 
-  const selected = state.cards.find(card => card.id === state.selectedId) || visible[0];
-  renderDetail(selected);
+  if (!state.selectedId && visible.length > 0) {
+    state.selectedId = visible[0].id;
+  }
+  updateSelectedRows();
+  if (!detail.classList.contains("hidden")) {
+    renderDetail(state.cards.find(card => card.id === state.selectedId));
+  }
   renderPortfolioChange();
 }
 
@@ -604,7 +619,7 @@ async function deleteSelectedCards() {
     state.selectedIds.clear();
     await loadCards();
   } catch (error) {
-    detail.innerHTML = `<h2>Could not delete cards</h2><p class="muted">${escapeHtml(error.message)}</p>`;
+    showDetailMessage("Could not delete cards", error.message);
     deleteSelected.disabled = false;
   }
 }
@@ -783,7 +798,7 @@ function totalPrice(card) {
 function renderDetail(card) {
   if (!card) {
     state.detailRenderKey = "empty";
-    detail.innerHTML = `<h2>No cards tracked</h2><p class="muted">Run the tracker to create the first price snapshot.</p>`;
+    detailContent.innerHTML = `<h2 id="detail-title">No cards tracked</h2><p class="muted">Run the tracker to create the first price snapshot.</p>`;
     return;
   }
 
@@ -802,21 +817,61 @@ function renderDetail(card) {
   }
 
   const points = (history || []).filter(point => point.price !== null);
-  detail.innerHTML = `
-    ${cardImage(card)}
-    <h2>${escapeHtml(card.name)}</h2>
-    <p class="muted">${escapeHtml(card.set_code.toUpperCase())} #${escapeHtml(card.collector_number)} · ${card.quantity} tracked · ${escapeHtml(conditionLabel(card.condition))} · ${escapeHtml(card.language || "English")} · ${escapeHtml(finishLabel(card.finish))}</p>
-    ${historyStatus(history, points, card.currency, error)}
-    ${historyPaginationStatus(history, pagination)}
-    <ul class="history-list">
-      ${(history || []).slice().reverse().map(point => `
-        <li>
-          <span>${formatDate(point.captured_at)}</span>
-          <strong>${money(point.price, point.currency)}</strong>
-        </li>
-      `).join("")}
-    </ul>
+  detailContent.innerHTML = `
+    <div class="detail-grid">
+      ${cardImage(card)}
+      <div class="detail-main">
+        <h2 id="detail-title">${escapeHtml(card.name)}</h2>
+        <dl class="card-facts">
+          <div><dt>Name</dt><dd>${escapeHtml(card.name)}</dd></div>
+          <div><dt>Edition</dt><dd>${escapeHtml(card.set_code.toUpperCase())} #${escapeHtml(card.collector_number)}</dd></div>
+          <div><dt>Anzahl</dt><dd>${card.quantity}</dd></div>
+          <div><dt>Zustand</dt><dd>${escapeHtml(conditionLabel(card.condition))}</dd></div>
+          <div><dt>Sprache</dt><dd>${escapeHtml(card.language || "English")}</dd></div>
+          <div><dt>Finish</dt><dd>${escapeHtml(finishLabel(card.finish))}</dd></div>
+          <div><dt>Letzter Preis</dt><dd>${money(card.latest_price, card.currency)}</dd></div>
+          <div><dt>Gesamtwert</dt><dd>${money(totalPrice(card), card.currency)}</dd></div>
+          <div><dt>Seit erstem Snapshot</dt><dd class="${changeClass(card)}">${signedMoney(card.change, card.currency)}</dd></div>
+          <div><dt>Erfasst</dt><dd>${formatDate(card.latest_captured_at)}</dd></div>
+        </dl>
+        ${scryfallLink(card)}
+      </div>
+    </div>
+    <section class="history-chart" aria-label="Price history">
+      <h3>Preishistorie</h3>
+      ${historyStatus(history, points, card.currency, error)}
+      ${historyPaginationStatus(history, pagination)}
+    </section>
   `;
+}
+
+function openDetail(card) {
+  detail.classList.remove("hidden");
+  detailBackdrop.classList.remove("hidden");
+  detail.setAttribute("aria-hidden", "false");
+  detailBackdrop.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+  state.detailRenderKey = "";
+  renderDetail(card);
+  detailClose.focus({ preventScroll: true });
+}
+
+function closeDetail() {
+  detail.classList.add("hidden");
+  detailBackdrop.classList.add("hidden");
+  detail.setAttribute("aria-hidden", "true");
+  detailBackdrop.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("modal-open");
+}
+
+function showDetailMessage(title, message) {
+  detail.classList.remove("hidden");
+  detailBackdrop.classList.remove("hidden");
+  detail.setAttribute("aria-hidden", "false");
+  detailBackdrop.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+  detailContent.innerHTML = `<h2 id="detail-title">${escapeHtml(title)}</h2><p class="muted">${escapeHtml(message)}</p>`;
+  detailClose.focus({ preventScroll: true });
 }
 
 async function loadCardHistory(cardId) {
@@ -842,7 +897,7 @@ async function loadCardHistory(cardId) {
     .finally(() => {
       state.historyRequests.delete(cardId);
       state.detailRenderKey = "";
-      if (state.selectedId === cardId) {
+      if (state.selectedId === cardId && !detail.classList.contains("hidden")) {
         renderDetail(state.cards.find(card => card.id === cardId));
       }
     });
@@ -901,13 +956,20 @@ function renderPortfolioChange() {
 
 function cardImage(card) {
   if (!card.has_image_url && !card.has_cached_image) {
-    return "";
+    return `<div class="card-image-wrap"><div class="card-image-placeholder" aria-hidden="true"></div></div>`;
   }
   return `
     <div class="card-image-wrap">
       <img class="card-image" src="/api/card-images/${encodeURIComponent(card.scryfall_id)}" alt="${escapeHtml(card.name)}">
     </div>
   `;
+}
+
+function scryfallLink(card) {
+  if (!card.source_url) {
+    return "";
+  }
+  return `<a class="scryfall-link" href="${escapeHtml(card.source_url)}" target="_blank" rel="noopener noreferrer">Scryfall öffnen</a>`;
 }
 
 function cardThumb(card) {
@@ -937,11 +999,7 @@ function chartSvg(points, currency) {
   if (points.length === 0) {
     return `<p class="muted">No priced snapshots are available for this card.</p>`;
   }
-  if (points.length === 1) {
-    return `<p class="muted">One snapshot: ${money(points[0].price, currency)}</p>`;
-  }
-
-  return lineChartSvg(points, currency, "Price history chart", 360);
+  return lineChartSvg(points, currency, "Price history chart", 720);
 }
 
 function lineChartSvg(points, currency, label, width) {
@@ -951,16 +1009,22 @@ function lineChartSvg(points, currency, label, width) {
   const min = Math.min(...values);
   const max = Math.max(...values);
   const spread = max - min || 1;
+  const singlePoint = values.length === 1;
   const coords = values.map((value, index) => {
-    const x = padding + (index / (values.length - 1)) * (width - padding * 2);
+    const x = singlePoint ? width / 2 : padding + (index / (values.length - 1)) * (width - padding * 2);
     const y = height - padding - ((value - min) / spread) * (height - padding * 2);
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   });
+  const pointsMarkup = coords.map(coord => {
+    const [x, y] = coord.split(",");
+    return `<circle cx="${x}" cy="${y}" r="4" fill="#2f6fae"></circle>`;
+  }).join("");
 
   return `
     <svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(label)}">
       <rect x="0" y="0" width="${width}" height="${height}" fill="#f4f9ff"></rect>
-      <polyline points="${coords.join(" ")}" fill="none" stroke="#2f6fae" stroke-width="3"></polyline>
+      ${singlePoint ? "" : `<polyline points="${coords.join(" ")}" fill="none" stroke="#2f6fae" stroke-width="3"></polyline>`}
+      ${pointsMarkup}
       <text x="${padding}" y="${padding}" fill="#60758f" font-size="12">${money(max, currency)}</text>
       <text x="${padding}" y="${height - 6}" fill="#60758F" font-size="12">${money(min, currency)}</text>
     </svg>

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.2 - 2026-05-07
+
+- Replace the inline card detail panel with a modal overlay on all viewport sizes.
+- Remove the mobile detail panel that appeared below the collection list.
+- Show card details with artwork, edition, quantity, tracked metadata, Scryfall link, and a chart-only price history.
+
 ## 1.1.1 - 2026-05-05
 
 - Add Renovate configuration for Python dependencies, container images, Docker Compose defaults, and GitHub Actions.
