@@ -68,13 +68,17 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
             sort = query_str(params, "sort", "name")
             direction = query_str(params, "direction", "asc")
             search = query_str(params, "q", "")
-            report = self.store.latest_page(
-                limit=page_size,
-                offset=(page - 1) * page_size,
-                search=search,
-                sort=sort,
-                direction=direction,
-            )
+            store = self._request_store()
+            try:
+                report = store.latest_page(
+                    limit=page_size,
+                    offset=(page - 1) * page_size,
+                    search=search,
+                    sort=sort,
+                    direction=direction,
+                )
+            finally:
+                self._close_request_store(store)
             log(
                 "CARDS LISTED "
                 f"page={page} page_size={page_size} q={search!r} sort={sort} direction={direction} "
@@ -86,16 +90,24 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
             suffix = "/price-history" if path.endswith("/price-history") else "/history"
             entry_id = unquote(path.removeprefix("/api/cards/").removesuffix(suffix))
             params = parse_qs(urlparse(self.path).query)
-            if "page" in params or "page_size" in params or suffix == "/price-history":
-                page = query_int(params, "page", 1, minimum=1)
-                page_size = query_int(params, "page_size", 100, minimum=1, maximum=500)
-                history_page = self.store.history_page_for_entry(entry_id, limit=page_size, offset=(page - 1) * page_size)
-                self._send_json(card_history_payload(history_page.rows, pagination=history_pagination_payload(history_page, page, page_size)))
-            else:
-                self._send_json(card_history_payload(self.store.history_rows_for_entry(entry_id)))
+            store = self._request_store()
+            try:
+                if "page" in params or "page_size" in params or suffix == "/price-history":
+                    page = query_int(params, "page", 1, minimum=1)
+                    page_size = query_int(params, "page_size", 100, minimum=1, maximum=500)
+                    history_page = store.history_page_for_entry(entry_id, limit=page_size, offset=(page - 1) * page_size)
+                    self._send_json(card_history_payload(history_page.rows, pagination=history_pagination_payload(history_page, page, page_size)))
+                else:
+                    self._send_json(card_history_payload(store.history_rows_for_entry(entry_id)))
+            finally:
+                self._close_request_store(store)
             return
         if path in {"/api/value-history", "/api/collection/value-history"}:
-            self._send_json(value_history_payload(self.store.value_history_rows()))
+            store = self._request_store()
+            try:
+                self._send_json(value_history_payload(store.value_history_rows()))
+            finally:
+                self._close_request_store(store)
             return
         if path == "/api/refresh-status":
             self._send_json(self.refresher.status())
@@ -281,24 +293,28 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
             self.send_error(HTTPStatus.NOT_FOUND)
             return
 
-        image = self.store.image_info(scryfall_id)
-        if image is None:
-            self.send_error(HTTPStatus.NOT_FOUND)
-            return
+        store = self._request_store()
+        try:
+            image = store.image_info(scryfall_id)
+            if image is None:
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
 
-        data = image.get("image_data")
-        content_type = image.get("image_content_type") or "image/jpeg"
-        if data is None:
-            image_url = image.get("image_url")
-            if not image_url:
-                self.send_error(HTTPStatus.NOT_FOUND, "No image available for this card")
-                return
-            try:
-                content_type, data = fetch_image(image_url)
-            except ImageFetchError as exc:
-                self.send_error(HTTPStatus.BAD_GATEWAY, str(exc))
-                return
-            self.store.save_image(scryfall_id, content_type, data)
+            data = image.get("image_data")
+            content_type = image.get("image_content_type") or "image/jpeg"
+            if data is None:
+                image_url = image.get("image_url")
+                if not image_url:
+                    self.send_error(HTTPStatus.NOT_FOUND, "No image available for this card")
+                    return
+                try:
+                    content_type, data = fetch_image(image_url)
+                except ImageFetchError as exc:
+                    self.send_error(HTTPStatus.BAD_GATEWAY, str(exc))
+                    return
+                store.save_image(scryfall_id, content_type, data)
+        finally:
+            self._close_request_store(store)
 
         self._send_response(
             data,
@@ -317,6 +333,15 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
     def _send_json(self, payload: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload, default=json_default).encode("utf-8")
         self._send_response(body, status, (("Content-Type", "application/json; charset=utf-8"), ("Cache-Control", "no-store")))
+
+    def _request_store(self) -> PriceStore:
+        if self.store.database_url:
+            return PriceStore(self.store.database_url, initialize_schema=False)
+        return self.store
+
+    def _close_request_store(self, store: PriceStore) -> None:
+        if store is not self.store:
+            store.close()
 
     def _send_response(self, body: bytes, status: HTTPStatus, headers: tuple[tuple[str, str], ...]) -> None:
         try:

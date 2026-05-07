@@ -482,7 +482,7 @@ button.tab:hover {
 .detail {
   min-width: 0;
   min-height: 0;
-  padding: 16px;
+  padding: 14px;
   overflow: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
@@ -510,13 +510,15 @@ button.tab:hover {
 
 .detail-grid {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 14px;
+  grid-template-columns: 118px minmax(0, 1fr);
+  gap: 12px;
   align-items: start;
 }
 
 .detail-main h2 {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
+  font-size: 1rem;
+  line-height: 1.15;
 }
 
 table {
@@ -673,13 +675,13 @@ tbody tr.selected {
 }
 
 .card-image {
-  width: min(100%, 170px);
+  width: 118px;
   border-radius: var(--radius);
   box-shadow: var(--card-shadow);
 }
 
 .card-image-placeholder {
-  width: min(100%, 170px);
+  width: 118px;
   aspect-ratio: 5 / 7;
   background: var(--panel-tint);
   border: 1px solid var(--line);
@@ -688,8 +690,8 @@ tbody tr.selected {
 
 .card-facts {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 7px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 8px;
   margin: 0;
 }
 
@@ -701,7 +703,7 @@ tbody tr.selected {
 
 .card-facts dt {
   color: var(--muted);
-  font-size: 0.66rem;
+  font-size: 0.6rem;
   font-weight: 900;
   text-transform: uppercase;
 }
@@ -709,20 +711,22 @@ tbody tr.selected {
 .card-facts dd {
   margin: 0;
   overflow-wrap: anywhere;
-  font-size: 0.88rem;
+  font-size: 0.76rem;
   font-weight: 800;
+  line-height: 1.15;
 }
 
 .scryfall-link {
   display: inline-flex;
   align-items: center;
-  height: 40px;
-  margin-top: 12px;
-  padding: 0 14px;
+  height: 34px;
+  margin-top: 10px;
+  padding: 0 11px;
   color: var(--button-text);
   background: var(--accent);
   border: 1px solid var(--accent);
   border-radius: var(--radius);
+  font-size: 0.82rem;
   font-weight: 900;
   text-decoration: none;
 }

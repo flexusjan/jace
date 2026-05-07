@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.6 - 2026-05-07
+
+- Speed up card listing and collection value history by reducing snapshot scans to first/latest entry bounds.
+- Use short-lived database connections for web read requests so expensive reads do not share the scheduler store connection.
+- Match the desktop card detail panel layout to the mobile overlay with artwork on the left and details on the right.
+
 ## 1.1.5 - 2026-05-07
 
 - Fix the optimized card listing SQL query by restoring the missing CTE separator.

@@ -231,13 +231,12 @@ class StorageTest(unittest.TestCase):
         history = store.value_history_rows()
 
         statement = connection.cursor_instance.statements[-1][0]
-        self.assertIn("collection_start", statement)
-        self.assertIn("MAX(first_captured_at)", statement)
+        self.assertIn("WITH bounds AS", statement)
+        self.assertIn("MIN(id) AS first_id", statement)
+        self.assertIn("MAX(id) AS latest_id", statement)
         self.assertIn("value_points", statement)
-        self.assertIn("MAX(captured_at)", statement)
-        self.assertIn("start_collection", statement)
-        self.assertIn("latest_collection", statement)
-        self.assertIn("SUM(latest_collection.price * latest_collection.quantity)", statement)
+        self.assertIn("SUM(first_price * first_quantity)", statement)
+        self.assertIn("SUM(latest_price * latest_quantity)", statement)
         self.assertEqual(history[0].total_value, Decimal("4.50"))
         self.assertEqual(history[0].currency, "EUR")
 
@@ -275,7 +274,9 @@ class StorageTest(unittest.TestCase):
 
         page_statement, page_parameters = connection.cursor_instance.statements[-1]
         self.assertIn("ILIKE %s", page_statement)
-        self.assertIn("first AS", page_statement)
+        self.assertIn("WITH bounds AS", page_statement)
+        self.assertIn("MIN(id) AS first_id", page_statement)
+        self.assertIn("MAX(id) AS latest_id", page_statement)
         self.assertIn("),\n                    filtered AS", page_statement)
         self.assertIn("total_price_sort DESC", page_statement)
         self.assertIn("LIMIT %s OFFSET %s", page_statement)

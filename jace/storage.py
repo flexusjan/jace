@@ -227,17 +227,10 @@ class PriceStore:
             with self.connection.cursor() as cursor:
                 cursor.execute(
                     f"""
-                    WITH latest AS (
-                        SELECT DISTINCT ON (entry_id)
-                            entry_id, scryfall_id, quantity, condition, language, finish, currency, price, captured_at
+                    WITH bounds AS (
+                        SELECT entry_id, MIN(id) AS first_id, MAX(id) AS latest_id
                         FROM price_snapshots
-                        ORDER BY entry_id, captured_at DESC, id DESC
-                    ),
-                    first AS (
-                        SELECT DISTINCT ON (entry_id)
-                            entry_id, price, captured_at
-                        FROM price_snapshots
-                        ORDER BY entry_id, captured_at ASC, id ASC
+                        GROUP BY entry_id
                     ),
                     filtered AS (
                         SELECT
@@ -260,9 +253,10 @@ class PriceStore:
                             first.captured_at AS first_captured_at,
                             latest.price * latest.quantity AS total_price_sort,
                             latest.price - first.price AS change_sort
-                        FROM latest
+                        FROM bounds
+                        JOIN price_snapshots latest ON latest.id = bounds.latest_id
+                        JOIN price_snapshots first ON first.id = bounds.first_id
                         JOIN cards c ON c.scryfall_id = latest.scryfall_id
-                        LEFT JOIN first ON first.entry_id = latest.entry_id
                         {filter_sql}
                     ),
                     summary AS (
@@ -527,57 +521,37 @@ class PriceStore:
             with self.connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    WITH first_snapshots AS (
-                        SELECT DISTINCT ON (entry_id)
-                            entry_id, captured_at AS first_captured_at
+                    WITH bounds AS (
+                        SELECT entry_id, MIN(id) AS first_id, MAX(id) AS latest_id
                         FROM price_snapshots
-                        ORDER BY entry_id, captured_at ASC, id ASC
+                        GROUP BY entry_id
                     ),
-                    collection_start AS (
-                        SELECT MAX(first_captured_at) AS captured_at
-                        FROM first_snapshots
-                    ),
-                    latest_point AS (
-                        SELECT MAX(captured_at) AS captured_at
-                        FROM price_snapshots
-                    ),
-                    start_collection AS (
-                        SELECT DISTINCT ON (ps.entry_id)
-                            ps.entry_id, ps.quantity, ps.currency, ps.price
-                        FROM price_snapshots ps
-                        CROSS JOIN collection_start
-                        WHERE collection_start.captured_at IS NOT NULL
-                          AND ps.captured_at <= collection_start.captured_at
-                        ORDER BY ps.entry_id, ps.captured_at DESC, ps.id DESC
-                    ),
-                    latest_collection AS (
-                        SELECT DISTINCT ON (entry_id)
-                            entry_id, quantity, currency, price
-                        FROM price_snapshots
-                        ORDER BY entry_id, captured_at DESC, id DESC
-                    ),
-                    start_value AS (
+                    pairs AS (
                         SELECT
-                            collection_start.captured_at,
-                            SUM(start_collection.price * start_collection.quantity) AS total_value,
-                            CASE WHEN COUNT(DISTINCT start_collection.currency) = 1 THEN MIN(start_collection.currency) ELSE NULL END AS currency
-                        FROM collection_start
-                        JOIN start_collection ON TRUE
-                        GROUP BY collection_start.captured_at
-                    ),
-                    latest_value AS (
-                        SELECT
-                            latest_point.captured_at,
-                            SUM(latest_collection.price * latest_collection.quantity) AS total_value,
-                            CASE WHEN COUNT(DISTINCT latest_collection.currency) = 1 THEN MIN(latest_collection.currency) ELSE NULL END AS currency
-                        FROM latest_point
-                        JOIN latest_collection ON TRUE
-                        GROUP BY latest_point.captured_at
+                            first.captured_at AS first_captured_at,
+                            first.quantity AS first_quantity,
+                            first.currency AS first_currency,
+                            first.price AS first_price,
+                            latest.captured_at AS latest_captured_at,
+                            latest.quantity AS latest_quantity,
+                            latest.currency AS latest_currency,
+                            latest.price AS latest_price
+                        FROM bounds
+                        JOIN price_snapshots first ON first.id = bounds.first_id
+                        JOIN price_snapshots latest ON latest.id = bounds.latest_id
                     ),
                     value_points AS (
-                        SELECT * FROM start_value
+                        SELECT
+                            MIN(first_captured_at) AS captured_at,
+                            SUM(first_price * first_quantity) AS total_value,
+                            CASE WHEN COUNT(DISTINCT first_currency) = 1 THEN MIN(first_currency) ELSE NULL END AS currency
+                        FROM pairs
                         UNION
-                        SELECT * FROM latest_value
+                        SELECT
+                            MAX(latest_captured_at) AS captured_at,
+                            SUM(latest_price * latest_quantity) AS total_value,
+                            CASE WHEN COUNT(DISTINCT latest_currency) = 1 THEN MIN(latest_currency) ELSE NULL END AS currency
+                        FROM pairs
                     )
                     SELECT
                         captured_at,
