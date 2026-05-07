@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.3 - 2026-05-07
+
+- Restore the desktop card detail view as a right-side panel while keeping the mobile detail view as an overlay.
+- Improve the mobile detail overlay layout with a larger card image and denser card metadata.
+- Redesign the price history chart to match the app theme and show latest, change, low, high, price axis, and date labels.
+- Keep card detail copy consistently in English.
+
 ## 1.1.2 - 2026-05-07
 
 - Replace the inline card detail panel with a modal overlay on all viewport sizes.

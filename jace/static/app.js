@@ -18,7 +18,8 @@ const state = {
   historyPagination: new Map(),
   valueHistory: null,
   valueHistoryError: "",
-  detailRenderKey: ""
+  detailRenderKey: "",
+  detailOpen: false
 };
 
 const COLUMN_STORAGE_KEY = "jace.visibleColumns";
@@ -37,6 +38,9 @@ const DEFAULT_VISIBLE_COLUMNS = [
 const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short"
+});
+const DATE_ONLY_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "short"
 });
 const columns = [
   {
@@ -120,6 +124,7 @@ const pageSize = document.querySelector("#page-size");
 const pagePrev = document.querySelector("#page-prev");
 const pageNext = document.querySelector("#page-next");
 const ACTIVE_IMPORT_JOB_KEY = "jace.activeImportJobId";
+const mobileDetailQuery = window.matchMedia("(max-width: 720px)");
 let searchTimer = null;
 
 initializeColumns();
@@ -160,10 +165,11 @@ pageNext.addEventListener("click", () => {
 detailClose.addEventListener("click", closeDetail);
 detailBackdrop.addEventListener("click", closeDetail);
 document.addEventListener("keydown", event => {
-  if (event.key === "Escape" && !detail.classList.contains("hidden")) {
+  if (event.key === "Escape" && state.detailOpen) {
     closeDetail();
   }
 });
+mobileDetailQuery.addEventListener("change", updateDetailMode);
 cardsBody.addEventListener("click", event => {
   const checkbox = event.target.closest(".row-select");
   if (checkbox) {
@@ -189,6 +195,7 @@ cardsBody.addEventListener("change", event => {
 loadCards();
 loadValueHistory();
 loadRefreshStatus();
+updateDetailMode();
 setInterval(loadRefreshStatus, 30000);
 resumeActiveImport();
 
@@ -554,7 +561,7 @@ function render() {
     state.selectedId = visible[0].id;
   }
   updateSelectedRows();
-  if (!detail.classList.contains("hidden")) {
+  if (!isMobileDetail() || state.detailOpen) {
     renderDetail(state.cards.find(card => card.id === state.selectedId));
   }
   renderPortfolioChange();
@@ -825,20 +832,20 @@ function renderDetail(card) {
         <dl class="card-facts">
           <div><dt>Name</dt><dd>${escapeHtml(card.name)}</dd></div>
           <div><dt>Edition</dt><dd>${escapeHtml(card.set_code.toUpperCase())} #${escapeHtml(card.collector_number)}</dd></div>
-          <div><dt>Anzahl</dt><dd>${card.quantity}</dd></div>
-          <div><dt>Zustand</dt><dd>${escapeHtml(conditionLabel(card.condition))}</dd></div>
-          <div><dt>Sprache</dt><dd>${escapeHtml(card.language || "English")}</dd></div>
+          <div><dt>Quantity</dt><dd>${card.quantity}</dd></div>
+          <div><dt>Condition</dt><dd>${escapeHtml(conditionLabel(card.condition))}</dd></div>
+          <div><dt>Language</dt><dd>${escapeHtml(card.language || "English")}</dd></div>
           <div><dt>Finish</dt><dd>${escapeHtml(finishLabel(card.finish))}</dd></div>
-          <div><dt>Letzter Preis</dt><dd>${money(card.latest_price, card.currency)}</dd></div>
-          <div><dt>Gesamtwert</dt><dd>${money(totalPrice(card), card.currency)}</dd></div>
-          <div><dt>Seit erstem Snapshot</dt><dd class="${changeClass(card)}">${signedMoney(card.change, card.currency)}</dd></div>
-          <div><dt>Erfasst</dt><dd>${formatDate(card.latest_captured_at)}</dd></div>
+          <div><dt>Latest price</dt><dd>${money(card.latest_price, card.currency)}</dd></div>
+          <div><dt>Total value</dt><dd>${money(totalPrice(card), card.currency)}</dd></div>
+          <div><dt>Since first snapshot</dt><dd class="${changeClass(card)}">${signedMoney(card.change, card.currency)}</dd></div>
+          <div><dt>Captured</dt><dd>${formatDate(card.latest_captured_at)}</dd></div>
         </dl>
         ${scryfallLink(card)}
       </div>
     </div>
     <section class="history-chart" aria-label="Price history">
-      <h3>Preishistorie</h3>
+      <h3>Price history</h3>
       ${historyStatus(history, points, card.currency, error)}
       ${historyPaginationStatus(history, pagination)}
     </section>
@@ -846,32 +853,51 @@ function renderDetail(card) {
 }
 
 function openDetail(card) {
-  detail.classList.remove("hidden");
-  detailBackdrop.classList.remove("hidden");
-  detail.setAttribute("aria-hidden", "false");
-  detailBackdrop.setAttribute("aria-hidden", "false");
-  document.body.classList.add("modal-open");
+  state.detailOpen = true;
+  applyDetailVisibility();
   state.detailRenderKey = "";
   renderDetail(card);
-  detailClose.focus({ preventScroll: true });
+  if (isMobileDetail()) {
+    detailClose.focus({ preventScroll: true });
+  }
 }
 
 function closeDetail() {
-  detail.classList.add("hidden");
-  detailBackdrop.classList.add("hidden");
-  detail.setAttribute("aria-hidden", "true");
-  detailBackdrop.setAttribute("aria-hidden", "true");
-  document.body.classList.remove("modal-open");
+  state.detailOpen = false;
+  applyDetailVisibility();
 }
 
 function showDetailMessage(title, message) {
-  detail.classList.remove("hidden");
-  detailBackdrop.classList.remove("hidden");
-  detail.setAttribute("aria-hidden", "false");
-  detailBackdrop.setAttribute("aria-hidden", "false");
-  document.body.classList.add("modal-open");
+  state.detailOpen = true;
+  applyDetailVisibility();
   detailContent.innerHTML = `<h2 id="detail-title">${escapeHtml(title)}</h2><p class="muted">${escapeHtml(message)}</p>`;
-  detailClose.focus({ preventScroll: true });
+  if (isMobileDetail()) {
+    detailClose.focus({ preventScroll: true });
+  }
+}
+
+function updateDetailMode() {
+  applyDetailVisibility();
+  state.detailRenderKey = "";
+  if (!isMobileDetail()) {
+    renderDetail(state.cards.find(card => card.id === state.selectedId));
+  }
+}
+
+function applyDetailVisibility() {
+  const mobile = isMobileDetail();
+  detail.classList.toggle("hidden", mobile && !state.detailOpen);
+  detailBackdrop.classList.toggle("hidden", !mobile || !state.detailOpen);
+  detailClose.classList.toggle("hidden", !mobile);
+  detail.setAttribute("aria-hidden", mobile && !state.detailOpen ? "true" : "false");
+  detail.setAttribute("role", mobile ? "dialog" : "region");
+  detail.setAttribute("aria-modal", mobile ? "true" : "false");
+  detailBackdrop.setAttribute("aria-hidden", mobile && state.detailOpen ? "false" : "true");
+  document.body.classList.toggle("modal-open", mobile && state.detailOpen);
+}
+
+function isMobileDetail() {
+  return mobileDetailQuery.matches;
 }
 
 async function loadCardHistory(cardId) {
@@ -897,7 +923,7 @@ async function loadCardHistory(cardId) {
     .finally(() => {
       state.historyRequests.delete(cardId);
       state.detailRenderKey = "";
-      if (state.selectedId === cardId && !detail.classList.contains("hidden")) {
+      if (state.selectedId === cardId && (!isMobileDetail() || state.detailOpen)) {
         renderDetail(state.cards.find(card => card.id === cardId));
       }
     });
@@ -969,7 +995,7 @@ function scryfallLink(card) {
   if (!card.source_url) {
     return "";
   }
-  return `<a class="scryfall-link" href="${escapeHtml(card.source_url)}" target="_blank" rel="noopener noreferrer">Scryfall öffnen</a>`;
+  return `<a class="scryfall-link" href="${escapeHtml(card.source_url)}" target="_blank" rel="noopener noreferrer">Open Scryfall</a>`;
 }
 
 function cardThumb(card) {
@@ -999,34 +1025,68 @@ function chartSvg(points, currency) {
   if (points.length === 0) {
     return `<p class="muted">No priced snapshots are available for this card.</p>`;
   }
-  return lineChartSvg(points, currency, "Price history chart", 720);
+  return `
+    ${chartSummary(points, currency)}
+    ${lineChartSvg(points, currency, "Price history chart", 720)}
+  `;
+}
+
+function chartSummary(points, currency) {
+  const values = points.map(point => Number(point.price));
+  const first = points[0];
+  const latest = points[points.length - 1];
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const change = Number(latest.price) - Number(first.price);
+  return `
+    <div class="chart-summary">
+      <div><span>Latest</span><strong>${money(latest.price, currency)}</strong></div>
+      <div><span>Change</span><strong class="${changeClass({ change })}">${signedMoney(change, latest.currency || currency)}</strong></div>
+      <div><span>Low</span><strong>${money(min, currency)}</strong></div>
+      <div><span>High</span><strong>${money(max, currency)}</strong></div>
+    </div>
+  `;
 }
 
 function lineChartSvg(points, currency, label, width) {
-  const height = 180;
-  const padding = 18;
+  const height = 220;
+  const paddingX = 42;
+  const paddingTop = 18;
+  const paddingBottom = 34;
   const values = points.map(point => Number(point.price));
   const min = Math.min(...values);
   const max = Math.max(...values);
   const spread = max - min || 1;
   const singlePoint = values.length === 1;
   const coords = values.map((value, index) => {
-    const x = singlePoint ? width / 2 : padding + (index / (values.length - 1)) * (width - padding * 2);
-    const y = height - padding - ((value - min) / spread) * (height - padding * 2);
+    const x = singlePoint ? width / 2 : paddingX + (index / (values.length - 1)) * (width - paddingX * 2);
+    const y = height - paddingBottom - ((value - min) / spread) * (height - paddingTop - paddingBottom);
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   });
   const pointsMarkup = coords.map(coord => {
     const [x, y] = coord.split(",");
-    return `<circle cx="${x}" cy="${y}" r="4" fill="#2f6fae"></circle>`;
+    return `<circle cx="${x}" cy="${y}" r="3.5" class="chart-dot"></circle>`;
   }).join("");
+  const areaPoints = singlePoint
+    ? ""
+    : `${paddingX},${height - paddingBottom} ${coords.join(" ")} ${width - paddingX},${height - paddingBottom}`;
+  const firstDate = formatShortDate(points[0].captured_at);
+  const latestDate = formatShortDate(points[points.length - 1].captured_at);
+  const mid = min + spread / 2;
+  const gridY = [paddingTop, height - paddingBottom - (height - paddingTop - paddingBottom) / 2, height - paddingBottom];
 
   return `
     <svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(label)}">
-      <rect x="0" y="0" width="${width}" height="${height}" fill="#f4f9ff"></rect>
-      ${singlePoint ? "" : `<polyline points="${coords.join(" ")}" fill="none" stroke="#2f6fae" stroke-width="3"></polyline>`}
+      <rect x="0" y="0" width="${width}" height="${height}" class="chart-bg"></rect>
+      ${gridY.map(y => `<line x1="${paddingX}" y1="${y.toFixed(1)}" x2="${width - paddingX}" y2="${y.toFixed(1)}" class="chart-grid"></line>`).join("")}
+      ${singlePoint ? "" : `<polygon points="${areaPoints}" class="chart-area"></polygon>`}
+      ${singlePoint ? "" : `<polyline points="${coords.join(" ")}" class="chart-line"></polyline>`}
       ${pointsMarkup}
-      <text x="${padding}" y="${padding}" fill="#60758f" font-size="12">${money(max, currency)}</text>
-      <text x="${padding}" y="${height - 6}" fill="#60758F" font-size="12">${money(min, currency)}</text>
+      <text x="10" y="${paddingTop + 4}" class="chart-label">${money(max, currency)}</text>
+      <text x="10" y="${(height - paddingBottom - (height - paddingTop - paddingBottom) / 2 + 4).toFixed(1)}" class="chart-label">${money(mid, currency)}</text>
+      <text x="10" y="${height - paddingBottom + 4}" class="chart-label">${money(min, currency)}</text>
+      <text x="${paddingX}" y="${height - 10}" class="chart-label">${escapeHtml(firstDate)}</text>
+      <text x="${width - paddingX}" y="${height - 10}" class="chart-label chart-label-end">${escapeHtml(latestDate)}</text>
     </svg>
   `;
 }
@@ -1077,6 +1137,10 @@ function signedMoney(value, currency) {
 
 function formatDate(value) {
   return DATE_FORMATTER.format(new Date(value));
+}
+
+function formatShortDate(value) {
+  return DATE_ONLY_FORMATTER.format(new Date(value));
 }
 
 function escapeHtml(value) {
