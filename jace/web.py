@@ -6,6 +6,7 @@ import binascii
 import errno
 import hmac
 import threading
+import time
 import uuid
 from dataclasses import asdict
 from dataclasses import dataclass, field
@@ -39,6 +40,7 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
     store: PriceStore
     jobs: ImportJobs
     refresher: PriceRefreshScheduler
+    value_history_cache: TimedPayloadCache
 
     def end_headers(self) -> None:
         self._send_security_headers()
@@ -53,13 +55,13 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
             self._send_index()
             return
         if path == "/app.css":
-            self._send_file(STATIC_DIR / "app.css", "text/css; charset=utf-8")
+            self._send_file(STATIC_DIR / "app.css", "text/css; charset=utf-8", cache=True)
             return
         if path == "/app.js":
-            self._send_file(STATIC_DIR / "app.js", "application/javascript; charset=utf-8")
+            self._send_file(STATIC_DIR / "app.js", "application/javascript; charset=utf-8", cache=True)
             return
         if path == "/favicon.svg":
-            self._send_file(STATIC_DIR / "favicon.svg", "image/svg+xml")
+            self._send_file(STATIC_DIR / "favicon.svg", "image/svg+xml", cache=True)
             return
         if path == "/api/cards":
             params = parse_qs(urlparse(self.path).query)
@@ -103,11 +105,15 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
                 self._close_request_store(store)
             return
         if path in {"/api/value-history", "/api/collection/value-history"}:
-            store = self._request_store()
-            try:
-                self._send_json(value_history_payload(store.value_history_rows()))
-            finally:
-                self._close_request_store(store)
+            payload = self.value_history_cache.get()
+            if payload is None:
+                store = self._request_store()
+                try:
+                    payload = value_history_payload(store.value_history_rows())
+                finally:
+                    self._close_request_store(store)
+                self.value_history_cache.set(payload)
+            self._send_json(payload)
             return
         if path == "/api/refresh-status":
             self._send_json(self.refresher.status())
@@ -322,9 +328,12 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
             (("Content-Type", content_type), ("Cache-Control", "public, max-age=31536000, immutable")),
         )
 
-    def _send_file(self, path: Path, content_type: str) -> None:
+    def _send_file(self, path: Path, content_type: str, *, cache: bool = False) -> None:
         body = path.read_bytes()
-        self._send_response(body, HTTPStatus.OK, (("Content-Type", content_type),))
+        headers = [("Content-Type", content_type)]
+        if cache:
+            headers.append(("Cache-Control", "public, max-age=3600"))
+        self._send_response(body, HTTPStatus.OK, tuple(headers))
 
     def _send_index(self) -> None:
         body = rendered_index_html(app_config().dark_theme).encode("utf-8")
@@ -362,9 +371,14 @@ def serve(host: str, port: int, database_url: str | None) -> int:
     store = PriceStore(database_url)
     log(f"COLLECTION STARTUP {collection_stats_log(store)}")
     jobs = ImportJobs()
+    value_history_cache = TimedPayloadCache(ttl_seconds=30)
     refresher = PriceRefreshScheduler(store.database_url, interval_seconds=config.refresh_interval_seconds)
     refresher.start()
-    handler = type("ConfiguredPriceTrackerHandler", (PriceTrackerHandler,), {"store": store, "jobs": jobs, "refresher": refresher})
+    handler = type(
+        "ConfiguredPriceTrackerHandler",
+        (PriceTrackerHandler,),
+        {"store": store, "jobs": jobs, "refresher": refresher, "value_history_cache": value_history_cache},
+    )
     server = ThreadingHTTPServer((host, port), handler)
     log(f"Serving MTG price tracker on http://{host}:{port}")
     try:
@@ -631,6 +645,25 @@ class ImportJobs:
             job = self._jobs[job_id]
             for key, value in changes.items():
                 setattr(job, key, value)
+
+
+class TimedPayloadCache:
+    def __init__(self, ttl_seconds: float) -> None:
+        self.ttl_seconds = ttl_seconds
+        self._lock = threading.Lock()
+        self._payload: Any | None = None
+        self._expires_at = 0.0
+
+    def get(self) -> Any | None:
+        with self._lock:
+            if self._payload is None or time.monotonic() >= self._expires_at:
+                return None
+            return self._payload
+
+    def set(self, payload: Any) -> None:
+        with self._lock:
+            self._payload = payload
+            self._expires_at = time.monotonic() + self.ttl_seconds
 
 
 class ImageFetchError(RuntimeError):

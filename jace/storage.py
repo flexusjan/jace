@@ -47,6 +47,9 @@ ON price_snapshots(entry_id, captured_at DESC, id DESC);
 
 CREATE INDEX IF NOT EXISTS idx_price_snapshots_entry_first
 ON price_snapshots(entry_id, captured_at ASC, id ASC);
+
+CREATE INDEX IF NOT EXISTS idx_price_snapshots_entry_id
+ON price_snapshots(entry_id, id);
 """
 
 
@@ -658,6 +661,7 @@ class PriceStore:
                 cursor.execute("ALTER TABLE price_snapshots ADD COLUMN IF NOT EXISTS finish TEXT NOT NULL DEFAULT 'Non-Foil'")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_price_snapshots_entry_latest ON price_snapshots(entry_id, captured_at DESC, id DESC)")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_price_snapshots_entry_first ON price_snapshots(entry_id, captured_at ASC, id ASC)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_price_snapshots_entry_id ON price_snapshots(entry_id, id)")
             self.connection.commit()
         except Exception:
             self.connection.rollback()

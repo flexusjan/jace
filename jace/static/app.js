@@ -192,12 +192,25 @@ cardsBody.addEventListener("change", event => {
   updateSelectionControls(visibleSortedCards());
 });
 
-loadCards();
-loadValueHistory();
+loadInitialData();
 loadRefreshStatus();
 updateDetailMode();
 setInterval(loadRefreshStatus, 30000);
 resumeActiveImport();
+
+async function loadInitialData() {
+  await loadCards();
+  deferValueHistoryLoad();
+}
+
+function deferValueHistoryLoad() {
+  const load = () => loadValueHistory();
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(load, { timeout: 2000 });
+  } else {
+    window.setTimeout(load, 500);
+  }
+}
 
 async function loadCards() {
   try {

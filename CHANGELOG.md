@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.7 - 2026-05-07
+
+- Defer collection value history loading so initial page refreshes are not blocked by the secondary graph request.
+- Cache static frontend assets and short-lived collection value history responses.
+- Add an entry/id snapshot index for faster first/latest entry-bound queries.
+- Improve the non-mobile detail panel layout and compact the mobile card list.
+
 ## 1.1.6 - 2026-05-07
 
 - Speed up card listing and collection value history by reducing snapshot scans to first/latest entry bounds.

@@ -483,7 +483,7 @@ button.tab:hover {
   min-width: 0;
   min-height: 0;
   padding: 14px;
-  overflow: auto;
+  overflow: hidden;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
@@ -496,7 +496,7 @@ button.tab:hover {
 }
 
 .detail-close {
-  display: grid;
+  display: none;
   place-items: center;
   width: 38px;
   height: 38px;
@@ -821,11 +821,15 @@ tbody tr.selected {
 
 @media (max-width: 1180px) {
   .shell {
-    width: min(100vw - 20px, 980px);
+    width: min(100vw - 20px, 1120px);
   }
 
   .data-toolbar {
     grid-template-columns: 1fr;
+  }
+
+  .layout {
+    grid-template-columns: minmax(520px, 1fr) clamp(300px, 34vw, 420px);
   }
 
   .data-actions {
@@ -939,20 +943,19 @@ tbody tr.selected {
 
   tbody {
     display: grid;
-    gap: 10px;
-    padding: 10px;
+    gap: 6px;
+    padding: 6px;
   }
 
   tbody tr {
     display: grid;
-    grid-template-columns: 28px 68px minmax(0, 1fr);
+    grid-template-columns: 24px 48px minmax(0, 1fr) auto;
     grid-template-areas:
-      "select thumb name"
-      ". thumb set"
-      ". thumb latest"
-      "meta meta meta";
-    gap: 6px 10px;
-    padding: 10px;
+      "select thumb name latest"
+      ". thumb set latest"
+      ". thumb meta meta";
+    gap: 4px 8px;
+    padding: 7px;
     background: var(--panel-tint);
     border: 1px solid var(--line);
     border-radius: var(--radius);
@@ -992,7 +995,7 @@ tbody tr.selected {
   .mobile-card-thumb img,
   .mobile-card-thumb-placeholder {
     display: block;
-    width: 68px;
+    width: 48px;
     aspect-ratio: 5 / 7;
     object-fit: cover;
     background: var(--panel);
@@ -1003,83 +1006,63 @@ tbody tr.selected {
   td[data-column="name"] {
     grid-area: name;
     min-width: 0;
-    font-size: 1rem;
-    line-height: 1.2;
+    font-size: 0.92rem;
+    line-height: 1.12;
   }
 
   td[data-column="set"] {
     grid-area: set;
     color: var(--muted);
-    font-size: 0.88rem;
+    font-size: 0.78rem;
   }
 
   td[data-column="latest_price"] {
     grid-area: latest;
     color: var(--accent-strong);
+    align-self: center;
+    font-size: 0.86rem;
     font-weight: 900;
+    text-align: right;
   }
 
   td[data-column="quantity"],
+  td[data-column="total_price"],
+  td[data-column="change"] {
+    display: inline-flex;
+    grid-row: 3;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.72rem;
+  }
+
   td[data-column="condition"],
   td[data-column="language"],
   td[data-column="finish"],
-  td[data-column="total_price"],
-  td[data-column="change"],
   td[data-column="latest_captured_at"] {
-    display: grid;
-    grid-template-columns: minmax(82px, auto) minmax(0, 1fr);
-    gap: 8px;
-    align-items: baseline;
-    font-size: 0.84rem;
+    display: none;
   }
 
   td[data-column="quantity"]::before,
-  td[data-column="condition"]::before,
-  td[data-column="language"]::before,
-  td[data-column="finish"]::before,
   td[data-column="total_price"]::before,
-  td[data-column="change"]::before,
-  td[data-column="latest_captured_at"]::before {
+  td[data-column="change"]::before {
     content: attr(data-label);
     color: var(--muted);
-    font-size: 0.72rem;
+    font-size: 0.62rem;
     font-weight: 900;
     text-transform: uppercase;
   }
 
   td[data-column="quantity"] {
-    grid-column: 1 / -1;
-    grid-row: 4;
-  }
-
-  td[data-column="condition"] {
-    grid-column: 1 / -1;
-    grid-row: 5;
-  }
-
-  td[data-column="language"] {
-    grid-column: 1 / -1;
-    grid-row: 6;
-  }
-
-  td[data-column="finish"] {
-    grid-column: 1 / -1;
-    grid-row: 7;
+    grid-column: 1 / 2;
   }
 
   td[data-column="total_price"] {
-    grid-column: 1 / -1;
-    grid-row: 8;
+    grid-column: 3 / 4;
   }
 
   td[data-column="change"] {
-    grid-column: 1 / -1;
-    grid-row: 9;
-  }
-
-  td[data-column="latest_captured_at"] {
-    grid-column: 1 / -1;
-    grid-row: 10;
+    grid-column: 4 / 5;
+    justify-self: end;
   }
 
   .column-hidden {
@@ -1104,6 +1087,7 @@ tbody tr.selected {
   }
 
   .detail-close {
+    display: grid;
     position: sticky;
     top: 0;
     float: right;
