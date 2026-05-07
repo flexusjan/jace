@@ -275,6 +275,8 @@ class StorageTest(unittest.TestCase):
 
         page_statement, page_parameters = connection.cursor_instance.statements[-1]
         self.assertIn("ILIKE %s", page_statement)
+        self.assertIn("first AS", page_statement)
+        self.assertIn("),\n                    filtered AS", page_statement)
         self.assertIn("total_price_sort DESC", page_statement)
         self.assertIn("LIMIT %s OFFSET %s", page_statement)
         self.assertEqual(page_parameters[-2:], [100, 200])

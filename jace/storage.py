@@ -223,68 +223,72 @@ class PriceStore:
         if limit is not None:
             page_sql = "LIMIT %s OFFSET %s"
             parameters.extend([limit, max(offset, 0)])
-        with self.connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                WITH latest AS (
-                    SELECT DISTINCT ON (entry_id)
-                        entry_id, scryfall_id, quantity, condition, language, finish, currency, price, captured_at
-                    FROM price_snapshots
-                    ORDER BY entry_id, captured_at DESC, id DESC
-                ),
-                first AS (
-                    SELECT DISTINCT ON (entry_id)
-                        entry_id, price, captured_at
-                    FROM price_snapshots
-                    ORDER BY entry_id, captured_at ASC, id ASC
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    WITH latest AS (
+                        SELECT DISTINCT ON (entry_id)
+                            entry_id, scryfall_id, quantity, condition, language, finish, currency, price, captured_at
+                        FROM price_snapshots
+                        ORDER BY entry_id, captured_at DESC, id DESC
+                    ),
+                    first AS (
+                        SELECT DISTINCT ON (entry_id)
+                            entry_id, price, captured_at
+                        FROM price_snapshots
+                        ORDER BY entry_id, captured_at ASC, id ASC
+                    ),
+                    filtered AS (
+                        SELECT
+                            latest.entry_id AS id,
+                            c.scryfall_id,
+                            c.name,
+                            c.set_code,
+                            c.collector_number,
+                            c.source_url,
+                            c.image_data IS NOT NULL AS has_cached_image,
+                            c.image_url IS NOT NULL AS has_image_url,
+                            latest.quantity,
+                            latest.condition,
+                            latest.language,
+                            latest.finish,
+                            latest.currency,
+                            latest.price AS latest_price,
+                            latest.captured_at AS latest_captured_at,
+                            first.price AS first_price,
+                            first.captured_at AS first_captured_at,
+                            latest.price * latest.quantity AS total_price_sort,
+                            latest.price - first.price AS change_sort
+                        FROM latest
+                        JOIN cards c ON c.scryfall_id = latest.scryfall_id
+                        LEFT JOIN first ON first.entry_id = latest.entry_id
+                        {filter_sql}
+                    ),
+                    summary AS (
+                        SELECT
+                            COUNT(*) AS summary_total_count,
+                            SUM(latest_price * quantity) AS summary_total_value,
+                            CASE WHEN COUNT(DISTINCT currency) = 1 THEN MIN(currency) ELSE NULL END AS summary_currency
+                        FROM filtered
+                    ),
+                    page AS (
+                        SELECT *
+                        FROM filtered
+                        ORDER BY {order_by}
+                        {page_sql}
+                    )
+                    SELECT page.*, summary.summary_total_count, summary.summary_total_value, summary.summary_currency
+                    FROM summary
+                    LEFT JOIN page ON TRUE
+                    """,
+                    parameters,
                 )
-                filtered AS (
-                    SELECT
-                        latest.entry_id AS id,
-                        c.scryfall_id,
-                        c.name,
-                        c.set_code,
-                        c.collector_number,
-                        c.source_url,
-                        c.image_data IS NOT NULL AS has_cached_image,
-                        c.image_url IS NOT NULL AS has_image_url,
-                        latest.quantity,
-                        latest.condition,
-                        latest.language,
-                        latest.finish,
-                        latest.currency,
-                        latest.price AS latest_price,
-                        latest.captured_at AS latest_captured_at,
-                        first.price AS first_price,
-                        first.captured_at AS first_captured_at,
-                        latest.price * latest.quantity AS total_price_sort,
-                        latest.price - first.price AS change_sort
-                    FROM latest
-                    JOIN cards c ON c.scryfall_id = latest.scryfall_id
-                    LEFT JOIN first ON first.entry_id = latest.entry_id
-                    {filter_sql}
-                ),
-                summary AS (
-                    SELECT
-                        COUNT(*) AS summary_total_count,
-                        SUM(latest_price * quantity) AS summary_total_value,
-                        CASE WHEN COUNT(DISTINCT currency) = 1 THEN MIN(currency) ELSE NULL END AS summary_currency
-                    FROM filtered
-                ),
-                page AS (
-                    SELECT *
-                    FROM filtered
-                    ORDER BY {order_by}
-                    {page_sql}
-                )
-                SELECT page.*, summary.summary_total_count, summary.summary_total_value, summary.summary_currency
-                FROM summary
-                LEFT JOIN page ON TRUE
-                """,
-                parameters,
-            )
-            result_rows = [dict(row) for row in cursor.fetchall()]
-        self.connection.commit()
+                result_rows = [dict(row) for row in cursor.fetchall()]
+            self.connection.commit()
+        except Exception:
+            self.connection.rollback()
+            raise
         summary = result_rows[0] if result_rows else {}
         return ReportPage(
             rows=[row_to_report(row) for row in result_rows if row.get("id") is not None],
@@ -519,79 +523,83 @@ class PriceStore:
         return HistoryPage(rows=rows, total_count=int(summary.get("total_count") or len(rows)))
 
     def value_history_rows(self) -> list[ValueHistoryPoint]:
-        with self.connection.cursor() as cursor:
-            cursor.execute(
-                """
-                WITH first_snapshots AS (
-                    SELECT DISTINCT ON (entry_id)
-                        entry_id, captured_at AS first_captured_at
-                    FROM price_snapshots
-                    ORDER BY entry_id, captured_at ASC, id ASC
-                ),
-                collection_start AS (
-                    SELECT MAX(first_captured_at) AS captured_at
-                    FROM first_snapshots
-                ),
-                latest_point AS (
-                    SELECT MAX(captured_at) AS captured_at
-                    FROM price_snapshots
-                ),
-                start_collection AS (
-                    SELECT DISTINCT ON (ps.entry_id)
-                        ps.entry_id, ps.quantity, ps.currency, ps.price
-                    FROM price_snapshots ps
-                    CROSS JOIN collection_start
-                    WHERE collection_start.captured_at IS NOT NULL
-                      AND ps.captured_at <= collection_start.captured_at
-                    ORDER BY ps.entry_id, ps.captured_at DESC, ps.id DESC
-                ),
-                latest_collection AS (
-                    SELECT DISTINCT ON (entry_id)
-                        entry_id, quantity, currency, price
-                    FROM price_snapshots
-                    ORDER BY entry_id, captured_at DESC, id DESC
-                ),
-                start_value AS (
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    WITH first_snapshots AS (
+                        SELECT DISTINCT ON (entry_id)
+                            entry_id, captured_at AS first_captured_at
+                        FROM price_snapshots
+                        ORDER BY entry_id, captured_at ASC, id ASC
+                    ),
+                    collection_start AS (
+                        SELECT MAX(first_captured_at) AS captured_at
+                        FROM first_snapshots
+                    ),
+                    latest_point AS (
+                        SELECT MAX(captured_at) AS captured_at
+                        FROM price_snapshots
+                    ),
+                    start_collection AS (
+                        SELECT DISTINCT ON (ps.entry_id)
+                            ps.entry_id, ps.quantity, ps.currency, ps.price
+                        FROM price_snapshots ps
+                        CROSS JOIN collection_start
+                        WHERE collection_start.captured_at IS NOT NULL
+                          AND ps.captured_at <= collection_start.captured_at
+                        ORDER BY ps.entry_id, ps.captured_at DESC, ps.id DESC
+                    ),
+                    latest_collection AS (
+                        SELECT DISTINCT ON (entry_id)
+                            entry_id, quantity, currency, price
+                        FROM price_snapshots
+                        ORDER BY entry_id, captured_at DESC, id DESC
+                    ),
+                    start_value AS (
+                        SELECT
+                            collection_start.captured_at,
+                            SUM(start_collection.price * start_collection.quantity) AS total_value,
+                            CASE WHEN COUNT(DISTINCT start_collection.currency) = 1 THEN MIN(start_collection.currency) ELSE NULL END AS currency
+                        FROM collection_start
+                        JOIN start_collection ON TRUE
+                        GROUP BY collection_start.captured_at
+                    ),
+                    latest_value AS (
+                        SELECT
+                            latest_point.captured_at,
+                            SUM(latest_collection.price * latest_collection.quantity) AS total_value,
+                            CASE WHEN COUNT(DISTINCT latest_collection.currency) = 1 THEN MIN(latest_collection.currency) ELSE NULL END AS currency
+                        FROM latest_point
+                        JOIN latest_collection ON TRUE
+                        GROUP BY latest_point.captured_at
+                    ),
+                    value_points AS (
+                        SELECT * FROM start_value
+                        UNION
+                        SELECT * FROM latest_value
+                    )
                     SELECT
-                        collection_start.captured_at,
-                        SUM(start_collection.price * start_collection.quantity) AS total_value,
-                        CASE WHEN COUNT(DISTINCT start_collection.currency) = 1 THEN MIN(start_collection.currency) ELSE NULL END AS currency
-                    FROM collection_start
-                    JOIN start_collection ON TRUE
-                    GROUP BY collection_start.captured_at
-                ),
-                latest_value AS (
-                    SELECT
-                        latest_point.captured_at,
-                        SUM(latest_collection.price * latest_collection.quantity) AS total_value,
-                        CASE WHEN COUNT(DISTINCT latest_collection.currency) = 1 THEN MIN(latest_collection.currency) ELSE NULL END AS currency
-                    FROM latest_point
-                    JOIN latest_collection ON TRUE
-                    GROUP BY latest_point.captured_at
-                ),
-                value_points AS (
-                    SELECT * FROM start_value
-                    UNION
-                    SELECT * FROM latest_value
+                        captured_at,
+                        total_value,
+                        currency
+                    FROM value_points
+                    WHERE captured_at IS NOT NULL
+                    ORDER BY value_points.captured_at ASC
+                    """
                 )
-                SELECT
-                    captured_at,
-                    total_value,
-                    currency
-                FROM value_points
-                WHERE captured_at IS NOT NULL
-                ORDER BY value_points.captured_at ASC
-                """
-            )
-            rows = [
-                ValueHistoryPoint(
-                    captured_at=values["captured_at"],
-                    total_value=decimal_or_none(values["total_value"]),
-                    currency=values["currency"],
-                )
-                for values in (dict(row) for row in cursor.fetchall())
-            ]
-        self.connection.commit()
+                rows = [
+                    ValueHistoryPoint(
+                        captured_at=values["captured_at"],
+                        total_value=decimal_or_none(values["total_value"]),
+                        currency=values["currency"],
+                    )
+                    for values in (dict(row) for row in cursor.fetchall())
+                ]
+            self.connection.commit()
+        except Exception:
+            self.connection.rollback()
+            raise
         return rows
 
     def stale_tracked_cards(self, older_than: datetime) -> list[TrackedCard]:

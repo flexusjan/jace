@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.5 - 2026-05-07
+
+- Fix the optimized card listing SQL query by restoring the missing CTE separator.
+- Roll back failed read transactions so one SQL error does not leave subsequent API requests in an aborted transaction.
+
 ## 1.1.4 - 2026-05-07
 
 - Make the desktop card detail panel more compact and remove duplicated detail values.
