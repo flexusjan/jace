@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.1 - 2026-05-07
+
+- Restore normal readable text sizes in the desktop card detail panel.
+- Improve the desktop detail panel spacing with larger artwork and clearer metadata blocks while keeping the chart unchanged.
+
 ## 1.2.0 - 2026-05-07
 
 - Fix stale browser asset caching so card detail layout changes load reliably after updates.

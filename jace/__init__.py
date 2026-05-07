@@ -2,5 +2,5 @@
 
 __all__ = ["APP_USER_AGENT", "__version__"]
 
-__version__ = "1.2.0"
+__version__ = "1.2.1"
 APP_USER_AGENT = "Jace Price Tracker"
