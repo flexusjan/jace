@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.8 - 2026-05-07
+
+- Restore the desktop card detail panel to a larger artwork-first layout with compact details below.
+- Keep the desktop detail panel non-scrollable while preserving the mobile side-by-side overlay layout.
+
 ## 1.1.7 - 2026-05-07
 
 - Defer collection value history loading so initial page refreshes are not blocked by the secondary graph request.

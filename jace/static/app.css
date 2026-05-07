@@ -510,14 +510,14 @@ button.tab:hover {
 
 .detail-grid {
   display: grid;
-  grid-template-columns: 118px minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: 1fr;
+  gap: 10px;
   align-items: start;
 }
 
 .detail-main h2 {
-  margin-bottom: 8px;
-  font-size: 1rem;
+  margin-bottom: 7px;
+  font-size: 0.96rem;
   line-height: 1.15;
 }
 
@@ -675,13 +675,13 @@ tbody tr.selected {
 }
 
 .card-image {
-  width: 118px;
+  width: min(100%, 190px);
   border-radius: var(--radius);
   box-shadow: var(--card-shadow);
 }
 
 .card-image-placeholder {
-  width: 118px;
+  width: min(100%, 190px);
   aspect-ratio: 5 / 7;
   background: var(--panel-tint);
   border: 1px solid var(--line);
@@ -691,19 +691,19 @@ tbody tr.selected {
 .card-facts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px 8px;
+  gap: 5px 8px;
   margin: 0;
 }
 
 .card-facts div {
   display: grid;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
 }
 
 .card-facts dt {
   color: var(--muted);
-  font-size: 0.6rem;
+  font-size: 0.58rem;
   font-weight: 900;
   text-transform: uppercase;
 }
@@ -711,7 +711,7 @@ tbody tr.selected {
 .card-facts dd {
   margin: 0;
   overflow-wrap: anywhere;
-  font-size: 0.76rem;
+  font-size: 0.73rem;
   font-weight: 800;
   line-height: 1.15;
 }
@@ -719,14 +719,14 @@ tbody tr.selected {
 .scryfall-link {
   display: inline-flex;
   align-items: center;
-  height: 34px;
-  margin-top: 10px;
-  padding: 0 11px;
+  height: 32px;
+  margin-top: 8px;
+  padding: 0 10px;
   color: var(--button-text);
   background: var(--accent);
   border: 1px solid var(--accent);
   border-radius: var(--radius);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 900;
   text-decoration: none;
 }
@@ -737,13 +737,13 @@ tbody tr.selected {
 
 .history-chart {
   clear: both;
-  margin-top: 14px;
+  margin-top: 10px;
 }
 
 .history-chart h3 {
   margin: 0;
   color: var(--heading);
-  font-size: 1rem;
+  font-size: 0.92rem;
 }
 
 .muted {
@@ -752,8 +752,8 @@ tbody tr.selected {
 
 .chart {
   width: 100%;
-  height: 178px;
-  margin-top: 8px;
+  height: 150px;
+  margin-top: 6px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
 }
@@ -793,15 +793,15 @@ tbody tr.selected {
 .chart-summary {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-  margin-top: 8px;
+  gap: 5px;
+  margin-top: 6px;
 }
 
 .chart-summary div {
   display: grid;
   gap: 2px;
   min-width: 0;
-  padding: 6px 8px;
+  padding: 5px 7px;
   background: var(--panel-tint);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -809,14 +809,14 @@ tbody tr.selected {
 
 .chart-summary span {
   color: var(--muted);
-  font-size: 0.62rem;
+  font-size: 0.58rem;
   font-weight: 900;
   text-transform: uppercase;
 }
 
 .chart-summary strong {
   overflow-wrap: anywhere;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
 }
 
 @media (max-width: 1180px) {
