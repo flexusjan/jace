@@ -17,6 +17,7 @@ from jace.web import (
     cards_payload,
     format_collection_stats,
     history_pagination_payload,
+    history_sample_payload,
     import_payload,
     import_requests_from_payload,
     report_pagination_payload,
@@ -130,6 +131,16 @@ class WebPayloadTest(unittest.TestCase):
         self.assertEqual(payload["pagination"]["page_size"], 100)
         self.assertEqual(payload["pagination"]["total_count"], 201)
         self.assertEqual(payload["pagination"]["total_pages"], 3)
+
+    def test_card_history_payload_includes_sample_metadata(self):
+        history_page = HistoryPage(rows=[], total_count=600, sampled=True)
+
+        payload = card_history_payload([], sample=history_sample_payload(history_page, sample_size=500))
+
+        self.assertEqual(payload["sample"]["sample_size"], 500)
+        self.assertEqual(payload["sample"]["sampled_count"], 0)
+        self.assertEqual(payload["sample"]["total_count"], 600)
+        self.assertTrue(payload["sample"]["sampled"])
 
     def test_value_history_payload_formats_points(self):
         payload = value_history_payload(

@@ -114,6 +114,8 @@ const cardFile = document.querySelector("#card-file");
 const moxfieldUrl = document.querySelector("#moxfield-url");
 const currency = document.querySelector("#currency");
 const sortButtons = document.querySelectorAll("[data-sort]");
+const mobileSortKey = document.querySelector("#mobile-sort-key");
+const mobileSortDirection = document.querySelector("#mobile-sort-direction");
 const columnOptions = document.querySelector("#column-options");
 const columnToggles = document.querySelectorAll("#column-options input[type='checkbox']");
 const selectAll = document.querySelector("#select-all");
@@ -141,6 +143,17 @@ importTabs.forEach(tab => {
 importForm.addEventListener("submit", submitImport);
 sortButtons.forEach(button => {
   button.addEventListener("click", () => setSort(button.dataset.sort));
+});
+mobileSortKey.addEventListener("change", event => {
+  state.sortKey = event.target.value;
+  state.sortDirection = defaultSortDirection(state.sortKey);
+  state.page = 1;
+  loadCards();
+});
+mobileSortDirection.addEventListener("click", () => {
+  state.sortDirection = state.sortDirection === "asc" ? "desc" : "asc";
+  state.page = 1;
+  loadCards();
 });
 columnOptions.addEventListener("change", updateVisibleColumns);
 selectAll.addEventListener("change", toggleVisibleSelection);
@@ -707,6 +720,9 @@ function updateSortButtons() {
     button.setAttribute("aria-sort", active ? (state.sortDirection === "asc" ? "ascending" : "descending") : "none");
     button.dataset.direction = active ? state.sortDirection : "";
   });
+  mobileSortKey.value = state.sortKey;
+  mobileSortDirection.textContent = state.sortDirection === "asc" ? "Ascending" : "Descending";
+  mobileSortDirection.dataset.direction = state.sortDirection;
 }
 
 function updatePaginationControls() {
@@ -868,7 +884,7 @@ function isMobileDetail() {
 }
 
 async function loadCardHistory(cardId) {
-  const params = new URLSearchParams({ page: "1", page_size: "100" });
+  const params = new URLSearchParams({ sample_size: "500" });
   const request = fetch(`/api/cards/${encodeURIComponent(cardId)}/price-history?${params.toString()}`, { cache: "no-store" })
     .then(async response => {
       const payload = await response.json();
@@ -878,6 +894,8 @@ async function loadCardHistory(cardId) {
       state.histories.set(cardId, payload.history || []);
       if (payload.pagination) {
         state.historyPagination.set(cardId, payload.pagination);
+      } else if (payload.sample) {
+        state.historyPagination.set(cardId, payload.sample);
       } else {
         state.historyPagination.delete(cardId);
       }
@@ -912,6 +930,9 @@ function historyPaginationStatus(history, pagination) {
     return "";
   }
   const total = Number(pagination.total_count || history.length);
+  if (pagination.sampled) {
+    return `<p class="muted">Showing ${history.length} sampled points across ${total} price snapshots.</p>`;
+  }
   if (total <= history.length) {
     return "";
   }

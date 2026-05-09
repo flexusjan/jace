@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.3 - 2026-05-09
+
+- Show card price history across the full snapshot range by loading a bounded server-side sample instead of only the latest 100 snapshots.
+- Add mobile sorting controls so cards can be sorted while the table header is hidden on small screens.
+
 ## 1.2.2 - 2026-05-08
 
 - Remove the captured timestamp from the desktop card detail panel to give the price history section more breathing room.

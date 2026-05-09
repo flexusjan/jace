@@ -535,6 +535,10 @@ table {
   border-collapse: collapse;
 }
 
+.mobile-sort {
+  display: none;
+}
+
 thead {
   position: sticky;
   top: 0;
@@ -938,6 +942,31 @@ tbody tr.selected {
 
   .table-scroll {
     overflow: visible;
+  }
+
+  .mobile-sort {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 6px;
+  }
+
+  .mobile-sort label {
+    display: grid;
+    gap: 4px;
+  }
+
+  .mobile-sort span {
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  .mobile-sort select,
+  .mobile-sort button {
+    width: 100%;
+    height: 38px;
   }
 
   table,

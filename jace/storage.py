@@ -85,6 +85,7 @@ class HistoryPoint:
 class HistoryPage:
     rows: list[HistoryPoint]
     total_count: int
+    sampled: bool = False
 
 
 @dataclass(frozen=True)
@@ -518,6 +519,74 @@ class PriceStore:
         self.connection.commit()
         summary = dict(summary_rows[0]) if summary_rows else {}
         return HistoryPage(rows=rows, total_count=int(summary.get("total_count") or len(rows)))
+
+    def history_sample_for_entry(self, entry_id: str, *, max_points: int = 500) -> HistoryPage:
+        sample_size = max(max_points, 2)
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                WITH numbered AS (
+                    SELECT
+                        captured_at,
+                        price,
+                        currency,
+                        id,
+                        ROW_NUMBER() OVER (ORDER BY captured_at ASC, id ASC) AS row_number,
+                        COUNT(*) OVER () AS total_count
+                    FROM price_snapshots
+                    WHERE entry_id = %s
+                ),
+                bucketed AS (
+                    SELECT
+                        captured_at,
+                        price,
+                        currency,
+                        id,
+                        row_number,
+                        total_count,
+                        CASE
+                            WHEN total_count <= %s THEN row_number
+                            ELSE FLOOR(((row_number - 1)::numeric * (%s - 2)) / GREATEST(total_count - 2, 1))::integer
+                        END AS bucket
+                    FROM numbered
+                ),
+                picked AS (
+                    SELECT DISTINCT ON (bucket)
+                        captured_at,
+                        price,
+                        currency,
+                        id,
+                        total_count
+                    FROM bucketed
+                    WHERE total_count <= %s OR row_number < total_count
+                    ORDER BY bucket, captured_at ASC, id ASC
+                ),
+                combined AS (
+                    SELECT captured_at, price, currency, id, total_count
+                    FROM picked
+                    UNION
+                    SELECT captured_at, price, currency, id, total_count
+                    FROM bucketed
+                    WHERE total_count > %s AND row_number = total_count
+                )
+                SELECT captured_at, price, currency, total_count
+                FROM combined
+                ORDER BY captured_at ASC, id ASC
+                """,
+                (entry_id, sample_size, sample_size, sample_size, sample_size),
+            )
+            result_rows = [dict(row) for row in cursor.fetchall()]
+            rows = [
+                HistoryPoint(
+                    captured_at=values["captured_at"],
+                    price=decimal_or_none(values["price"]),
+                    currency=values["currency"],
+                )
+                for values in result_rows
+            ]
+        self.connection.commit()
+        total_count = int(result_rows[0].get("total_count") or len(rows)) if result_rows else 0
+        return HistoryPage(rows=rows, total_count=total_count, sampled=total_count > len(rows))
 
     def value_history_rows(self) -> list[ValueHistoryPoint]:
         try:

@@ -111,6 +111,24 @@
       <section class="layout">
         <div class="table-wrap">
           <div class="table-scroll">
+            <div class="mobile-sort" aria-label="Card sorting">
+              <label>
+                <span>Sort</span>
+                <select id="mobile-sort-key">
+                  <option value="name">Card</option>
+                  <option value="set">Set</option>
+                  <option value="quantity">Qty</option>
+                  <option value="condition">Condition</option>
+                  <option value="language">Language</option>
+                  <option value="finish">Finish</option>
+                  <option value="latest_price">Latest</option>
+                  <option value="total_price">Total value</option>
+                  <option value="change">Since first snapshot</option>
+                  <option value="latest_captured_at">Captured</option>
+                </select>
+              </label>
+              <button id="mobile-sort-direction" type="button" aria-label="Toggle sort direction">Ascending</button>
+            </div>
             <table>
               <thead>
                 <tr>

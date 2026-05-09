@@ -95,10 +95,15 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
             store = self._request_store()
             try:
                 if "page" in params or "page_size" in params or suffix == "/price-history":
-                    page = query_int(params, "page", 1, minimum=1)
-                    page_size = query_int(params, "page_size", 100, minimum=1, maximum=500)
-                    history_page = store.history_page_for_entry(entry_id, limit=page_size, offset=(page - 1) * page_size)
-                    self._send_json(card_history_payload(history_page.rows, pagination=history_pagination_payload(history_page, page, page_size)))
+                    if "sample_size" in params:
+                        sample_size = query_int(params, "sample_size", 500, minimum=2, maximum=1000)
+                        history_page = store.history_sample_for_entry(entry_id, max_points=sample_size)
+                        self._send_json(card_history_payload(history_page.rows, sample=history_sample_payload(history_page, sample_size)))
+                    else:
+                        page = query_int(params, "page", 1, minimum=1)
+                        page_size = query_int(params, "page_size", 100, minimum=1, maximum=500)
+                        history_page = store.history_page_for_entry(entry_id, limit=page_size, offset=(page - 1) * page_size)
+                        self._send_json(card_history_payload(history_page.rows, pagination=history_pagination_payload(history_page, page, page_size)))
                 else:
                     self._send_json(card_history_payload(store.history_rows_for_entry(entry_id)))
             finally:
@@ -462,6 +467,15 @@ def history_pagination_payload(history_page: HistoryPage, page: int, page_size: 
     }
 
 
+def history_sample_payload(history_page: HistoryPage, sample_size: int) -> dict[str, Any]:
+    return {
+        "sample_size": sample_size,
+        "sampled_count": len(history_page.rows),
+        "total_count": history_page.total_count,
+        "sampled": history_page.sampled,
+    }
+
+
 def query_str(params: dict[str, list[str]], name: str, default: str) -> str:
     values = params.get(name)
     return values[0].strip() if values and values[0].strip() else default
@@ -482,7 +496,11 @@ def query_int(params: dict[str, list[str]], name: str, default: int, *, minimum:
     return value
 
 
-def card_history_payload(history: list[HistoryPoint], pagination: dict[str, Any] | None = None) -> dict[str, Any]:
+def card_history_payload(
+    history: list[HistoryPoint],
+    pagination: dict[str, Any] | None = None,
+    sample: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     payload = {
         "history": [
             {
@@ -495,6 +513,8 @@ def card_history_payload(history: list[HistoryPoint], pagination: dict[str, Any]
     }
     if pagination is not None:
         payload["pagination"] = pagination
+    if sample is not None:
+        payload["sample"] = sample
     return payload
 
 
