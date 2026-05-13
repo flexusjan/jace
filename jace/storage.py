@@ -807,8 +807,10 @@ def report_page_order_by(sort: str, direction: str) -> str:
         "change": "change_sort",
         "latest_captured_at": "latest_captured_at",
     }
+    # Validate sort parameter against whitelist
     primary = sort_columns.get(sort, sort_columns["name"])
-    sql_direction = "DESC" if direction == "desc" else "ASC"
+    # Validate direction parameter - only allow ASC or DESC
+    sql_direction = "DESC" if direction.upper() == "DESC" else "ASC"
     nulls = "NULLS LAST"
     primary_columns = primary if isinstance(primary, list) else [primary]
     primary_order = ", ".join(f"{column} {sql_direction} {nulls}" for column in primary_columns)

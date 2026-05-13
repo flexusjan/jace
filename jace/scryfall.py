@@ -15,7 +15,6 @@ from .config import (
     DEFAULT_SCRYFALL_BULK_SIZE,
     DEFAULT_SCRYFALL_COLLECTION_REQUEST_INTERVAL_SECONDS,
     DEFAULT_SCRYFALL_REQUEST_INTERVAL_SECONDS,
-    DEFAULT_SCRYFALL_TIMEOUT_SECONDS,
     app_config,
 )
 from .exchange import ExchangeRateError, default_exchange_client
