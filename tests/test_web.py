@@ -24,6 +24,7 @@ from jace.web import (
     rendered_index_html,
     request_origin_allowed,
     scryfall_image_url_allowed,
+    summary_payload,
     value_history_payload,
 )
 from jace.importer import ImportFailure, ImportResult
@@ -155,6 +156,39 @@ class WebPayloadTest(unittest.TestCase):
 
         self.assertEqual(payload["history"][0]["total_value"], "12.50")
         self.assertEqual(payload["history"][0]["currency"], "EUR")
+
+    def test_summary_payload_formats_homepage_widget_values(self):
+        report = ReportPage(rows=[], total_count=2331, total_value=Decimal("12426.12"), currency="EUR")
+        payload = summary_payload(
+            report,
+            [
+                ValueHistoryPoint(
+                    captured_at=datetime(2026, 5, 3, tzinfo=timezone.utc),
+                    total_value=Decimal("12022.93"),
+                    currency="EUR",
+                ),
+                ValueHistoryPoint(
+                    captured_at=datetime(2026, 7, 4, tzinfo=timezone.utc),
+                    total_value=Decimal("12426.12"),
+                    currency="EUR",
+                ),
+            ],
+        )
+
+        self.assertEqual(payload["cards"], 2331)
+        self.assertEqual(payload["total_value"], "12426.12 EUR")
+        self.assertEqual(payload["change"], "+403.19 EUR")
+        self.assertEqual(payload["currency"], "EUR")
+
+    def test_summary_payload_handles_missing_history(self):
+        report = ReportPage(rows=[], total_count=0, total_value=None, currency=None)
+
+        payload = summary_payload(report, [])
+
+        self.assertEqual(payload["cards"], 0)
+        self.assertIsNone(payload["total_value"])
+        self.assertIsNone(payload["change"])
+        self.assertIsNone(payload["currency"])
 
     def test_format_collection_stats_includes_storage_counts(self):
         text = format_collection_stats(CollectionStats(cards=2, tracked_entries=3, snapshots=5))

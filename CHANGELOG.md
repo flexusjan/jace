@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.4 - 2026-07-05
+
+- Add `/api/summary` with collection card count, total value, and total value change for dashboard widgets.
+
 ## 1.2.3 - 2026-05-09
 
 - Show card price history across the full snapshot range by loading a bounded server-side sample instead of only the latest 100 snapshots.

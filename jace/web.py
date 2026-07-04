@@ -120,6 +120,15 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
                 self.value_history_cache.set(payload)
             self._send_json(payload)
             return
+        if path == "/api/summary":
+            store = self._request_store()
+            try:
+                report = store.latest_page(limit=1)
+                value_history = store.value_history_rows()
+            finally:
+                self._close_request_store(store)
+            self._send_json(summary_payload(report, value_history))
+            return
         if path == "/api/refresh-status":
             self._send_json(self.refresher.status())
             return
@@ -531,6 +540,22 @@ def value_history_payload(history: list[ValueHistoryPoint]) -> dict[str, Any]:
     }
 
 
+def summary_payload(report: ReportPage, value_history: list[ValueHistoryPoint]) -> dict[str, Any]:
+    first = value_history[0] if value_history else None
+    latest = value_history[-1] if value_history else None
+    currency = report.currency or (latest.currency if latest else None)
+    change = None
+    if first and latest and first.total_value is not None and latest.total_value is not None:
+        change = latest.total_value - first.total_value
+
+    return {
+        "cards": report.total_count,
+        "total_value": money_string(report.total_value, currency),
+        "change": signed_money_string(change, currency),
+        "currency": currency,
+    }
+
+
 def import_requests_from_payload(payload: dict[str, Any]) -> list[CardRequest]:
     source = str(payload.get("source") or "text")
     if source == "moxfield":
@@ -752,6 +777,20 @@ def price_change(row: ReportRow) -> Decimal | None:
 
 def decimal_to_string(value: Decimal | None) -> str | None:
     return str(value) if value is not None else None
+
+
+def money_string(value: Decimal | None, currency: str | None) -> str | None:
+    amount = decimal_to_string(value)
+    if amount is None:
+        return None
+    return f"{amount} {currency}".strip()
+
+
+def signed_money_string(value: Decimal | None, currency: str | None) -> str | None:
+    amount = money_string(value, currency)
+    if amount is None:
+        return None
+    return f"+{amount}" if value is not None and value > 0 else amount
 
 
 def json_default(value: Any) -> str:
