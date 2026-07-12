@@ -352,6 +352,25 @@ def wait_for_scryfall_slot(interval_seconds: float) -> None:
             time.sleep(wait_seconds)
             now = time.monotonic()
         _LAST_REQUEST_AT = now
+    # Rate limit check must cover the entire request to prevent concurrent requests
+    # from bypassing the limit by interleaving the wait with the actual request
+
+
+# Per-instance rate limit tracking to prevent concurrent requests from bypassing limits
+class _ScryfallRateLimiter:
+    _lock = threading.Lock()
+    _last_request_at: dict[int, float] = {}
+
+    @classmethod
+    def wait_for_slot(cls, interval_seconds: float) -> None:
+        instance_id = id(_ScryfallRateLimiter)
+        with cls._lock:
+            now = time.monotonic()
+            wait_seconds = cls._last_request_at.get(instance_id, 0.0) + interval_seconds - now
+            if wait_seconds > 0:
+                time.sleep(wait_seconds)
+                now = time.monotonic()
+            cls._last_request_at[instance_id] = now
 
 
 def retry_after_seconds(exc: HTTPError) -> float | None:

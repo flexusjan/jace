@@ -395,6 +395,7 @@ class PriceStore:
             return 0
         try:
             with self.connection.cursor() as cursor:
+                # First, count and delete snapshots
                 cursor.execute(
                     """
                     SELECT COUNT(DISTINCT entry_id) AS deleted
@@ -412,6 +413,7 @@ class PriceStore:
                     """,
                     (entry_ids,),
                 )
+                # Then delete orphaned cards
                 cursor.execute(
                     """
                     DELETE FROM cards c

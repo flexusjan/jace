@@ -599,7 +599,7 @@ def request_origin_allowed(value: str, host: str | None) -> bool:
     if not host:
         return False
     parsed = urlparse(value)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+    if parsed.scheme not in {"https"} or not parsed.netloc:
         return False
     return parsed.netloc.casefold() == host.casefold()
 
