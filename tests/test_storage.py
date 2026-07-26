@@ -172,6 +172,13 @@ class StorageTest(unittest.TestCase):
                 for statement in statements
             )
         )
+        self.assertTrue(
+            any(
+                "INSERT INTO portfolio_value_snapshots" in statement
+                and "initial_value" in statement
+                for statement in statements
+            )
+        )
 
     def test_row_to_report_converts_decimal_values(self):
         row = {

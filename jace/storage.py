@@ -1049,6 +1049,45 @@ class PriceStore:
                 cursor.execute(
                     "CREATE INDEX IF NOT EXISTS idx_price_snapshots_entry_id ON price_snapshots(entry_id, id)"
                 )
+                cursor.execute(
+                    """
+                    WITH bounds AS (
+                        SELECT entry_id, MIN(id) AS first_id
+                        FROM price_snapshots
+                        GROUP BY entry_id
+                    ),
+                    initial_value AS (
+                        SELECT
+                            MIN(first.captured_at) AS captured_at,
+                            SUM(first.price * first.quantity) AS total_value
+                        FROM bounds
+                        JOIN price_snapshots first ON first.id = bounds.first_id
+                        JOIN tracked_entries te ON te.entry_id = first.entry_id AND te.active
+                        WHERE first.currency = 'EUR'
+                    )
+                    INSERT INTO portfolio_value_snapshots (
+                        total_value, currency, active_entries, captured_at
+                    )
+                    SELECT
+                        initial_value.total_value,
+                        'EUR',
+                        (
+                            SELECT COUNT(*)
+                            FROM tracked_entries
+                            WHERE active
+                        ),
+                        initial_value.captured_at
+                    FROM initial_value
+                    WHERE initial_value.captured_at IS NOT NULL
+                      AND initial_value.total_value IS NOT NULL
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM portfolio_value_snapshots existing
+                          WHERE existing.currency = 'EUR'
+                            AND existing.captured_at <= initial_value.captured_at
+                      )
+                    """
+                )
             self.connection.commit()
         except Exception:
             self.connection.rollback()
