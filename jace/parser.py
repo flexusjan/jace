@@ -39,8 +39,12 @@ FINISH_ALIASES = {
     "*e*": "Etched",
 }
 
-SET_SUFFIX_RE = re.compile(r"^(?:(?P<qty>\d+)x?\s+)?(?P<name>.+?)\s+\[(?P<set>[A-Za-z0-9]{2,8})\]\s*$")
-ARENA_EXPORT_RE = re.compile(r"^(?:(?P<qty>\d+)x?\s+)?(?P<name>.+?)(?:\s+\((?P<set>[A-Za-z0-9]{2,8})\)\s+(?P<num>[A-Za-z0-9-]+)(?P<trailing>.*)?)?\s*$")
+SET_SUFFIX_RE = re.compile(
+    r"^(?:(?P<qty>\d+)x?\s+)?(?P<name>.+?)\s+\[(?P<set>[A-Za-z0-9]{2,8})\]\s*$"
+)
+ARENA_EXPORT_RE = re.compile(
+    r"^(?:(?P<qty>\d+)x?\s+)?(?P<name>.+?)(?:\s+\((?P<set>[A-Za-z0-9]{2,8})\)\s+(?P<num>[A-Za-z0-9-]+)(?P<trailing>.*)?)?\s*$"
+)
 
 
 def parse_card_line(line: str) -> CardRequest | None:
@@ -51,7 +55,11 @@ def parse_card_line(line: str) -> CardRequest | None:
     match = SET_SUFFIX_RE.match(raw)
     if match:
         quantity = int(match.group("qty") or "1")
-        return CardRequest(quantity=quantity, name=match.group("name").strip(), set_code=match.group("set").lower())
+        return CardRequest(
+            quantity=quantity,
+            name=match.group("name").strip(),
+            set_code=match.group("set").lower(),
+        )
 
     match = ARENA_EXPORT_RE.match(raw)
     if not match:
@@ -62,7 +70,13 @@ def parse_card_line(line: str) -> CardRequest | None:
     set_code = match.group("set").lower() if match.group("set") else None
     collector_number = match.group("num") if match.group("num") else None
     finish = finish_from_text(match.group("trailing") or "")
-    return CardRequest(quantity=quantity, name=name, set_code=set_code, collector_number=collector_number, finish=finish)
+    return CardRequest(
+        quantity=quantity,
+        name=name,
+        set_code=set_code,
+        collector_number=collector_number,
+        finish=finish,
+    )
 
 
 def parse_card_file(path: Path) -> list[CardRequest]:
@@ -86,7 +100,11 @@ def parse_card_csv(text: str, source: str = "csv") -> list[CardRequest]:
     if not reader.fieldnames:
         raise ValueError(f"{source}: CSV header is required")
 
-    fields = {field.lower().strip(): field for field in reader.fieldnames if field}
+    fields = {
+        field.lstrip("\ufeff").lower().strip(): field
+        for field in reader.fieldnames
+        if field
+    }
     name_field = field_name(fields, "name", "card name")
     count_field = field_name(fields, "count", "quantity", "qty")
     set_field = field_name(fields, "edition", "set", "set code")
@@ -102,11 +120,19 @@ def parse_card_csv(text: str, source: str = "csv") -> list[CardRequest]:
         name = (row.get(name_field) or "").strip()
         if not name:
             continue
-        quantity = parse_quantity(row.get(count_field) if count_field else None, source, line_number)
+        quantity = parse_quantity(
+            row.get(count_field) if count_field else None, source, line_number
+        )
         set_code = (row.get(set_field) or "").strip().lower() if set_field else None
-        collector_number = (row.get(number_field) or "").strip() if number_field else None
-        condition = normalize_condition(row.get(condition_field) if condition_field else None)
-        language = normalize_language(row.get(language_field) if language_field else None)
+        collector_number = (
+            (row.get(number_field) or "").strip() if number_field else None
+        )
+        condition = normalize_condition(
+            row.get(condition_field) if condition_field else None
+        )
+        language = normalize_language(
+            row.get(language_field) if language_field else None
+        )
         finish = normalize_finish(row.get(finish_field) if finish_field else None)
         requests.append(
             CardRequest(

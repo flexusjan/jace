@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import threading
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Any, Callable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from .config import DEFAULT_REFRESH_INTERVAL_SECONDS
 from .importer import import_cards
@@ -41,12 +42,14 @@ class PriceRefreshScheduler:
         self._thread: threading.Thread | None = None
         self._refresh_thread: threading.Thread | None = None
         self._lock = threading.Lock()
-        self._status = RefreshStatus(next_run_at=datetime.now(timezone.utc))
+        self._status = RefreshStatus(next_run_at=datetime.now(UTC))
 
     def start(self) -> None:
         if self._thread is not None:
             return
-        self._thread = threading.Thread(target=self._run, name="price-refresh", daemon=True)
+        self._thread = threading.Thread(
+            target=self._run, name="price-refresh", daemon=True
+        )
         self._thread.start()
 
     def stop(self) -> None:
@@ -63,9 +66,11 @@ class PriceRefreshScheduler:
     def refresh_now(self) -> tuple[bool, dict[str, Any]]:
         with self._lock:
             if self._status.running:
-                return False, refresh_status_payload(self._status, self.interval_seconds)
+                return False, refresh_status_payload(
+                    self._status, self.interval_seconds
+                )
             self._status.running = True
-            self._status.last_started_at = datetime.now(timezone.utc)
+            self._status.last_started_at = datetime.now(UTC)
             self._status.error = None
             self._status.next_run_at = None
             self._status.total = 0
@@ -74,7 +79,12 @@ class PriceRefreshScheduler:
             self._status.failed = 0
             payload = refresh_status_payload(self._status, self.interval_seconds)
 
-        self._refresh_thread = threading.Thread(target=self._run_refresh, args=(True,), name="price-refresh-now", daemon=True)
+        self._refresh_thread = threading.Thread(
+            target=self._run_refresh,
+            args=(True,),
+            name="price-refresh-now",
+            daemon=True,
+        )
         self._refresh_thread.start()
         return True, payload
 
@@ -85,11 +95,15 @@ class PriceRefreshScheduler:
 
     def _run_refresh(self, force: bool) -> None:
         with self._lock:
-            if self._status.running and self._status.last_started_at is not None and not force:
+            if (
+                self._status.running
+                and self._status.last_started_at is not None
+                and not force
+            ):
                 return
             if not self._status.running:
                 self._status.running = True
-                self._status.last_started_at = datetime.now(timezone.utc)
+                self._status.last_started_at = datetime.now(UTC)
                 self._status.error = None
                 self._status.next_run_at = None
                 self._status.total = 0
@@ -108,17 +122,19 @@ class PriceRefreshScheduler:
                 force=force,
                 progress=self._update_progress,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - a background scheduler must always publish a final status
             error = str(exc)
             log(f"PRICE REFRESH FAILED mode={mode}: {exc}", level="ERROR")
-        finished_at = datetime.now(timezone.utc)
+        finished_at = datetime.now(UTC)
         with self._lock:
             total = self._status.total
             processed = self._status.processed
             failed = self._status.failed
             self._status.running = False
             self._status.last_finished_at = finished_at
-            self._status.next_run_at = finished_at + timedelta(seconds=self.interval_seconds)
+            self._status.next_run_at = finished_at + timedelta(
+                seconds=self.interval_seconds
+            )
             self._status.refreshed = refreshed
             self._status.error = error
         status = "failed" if error is not None else "ok"
@@ -138,7 +154,10 @@ class PriceRefreshScheduler:
             self._status.failed = progress["failed"]
 
 
-def refresh_stale_prices(database_url: str | None, stale_after_seconds: int = DEFAULT_REFRESH_INTERVAL_SECONDS) -> int:
+def refresh_stale_prices(
+    database_url: str | None,
+    stale_after_seconds: int = DEFAULT_REFRESH_INTERVAL_SECONDS,
+) -> int:
     return refresh_prices(database_url, stale_after_seconds, force=False)
 
 
@@ -148,12 +167,14 @@ def refresh_prices(
     force: bool = False,
     progress: RefreshProgressCallback | None = None,
 ) -> int:
-    cutoff = datetime.now(timezone.utc) - timedelta(seconds=stale_after_seconds)
+    cutoff = datetime.now(UTC) - timedelta(seconds=stale_after_seconds)
     store = PriceStore(database_url, initialize_schema=False)
     try:
         cards = store.tracked_cards() if force else store.stale_tracked_cards(cutoff)
         if not cards:
-            report_refresh_progress(progress, total=0, processed=0, refreshed=0, failed=0)
+            report_refresh_progress(
+                progress, total=0, processed=0, refreshed=0, failed=0
+            )
             return 0
         return refresh_cards(store, cards, progress=progress)
     finally:
@@ -174,7 +195,9 @@ def refresh_cards(
     for tracked in tracked_cards:
         by_currency[tracked.currency].append(tracked)
 
-    report_refresh_progress(progress, total=total, processed=processed, refreshed=refreshed, failed=failed)
+    report_refresh_progress(
+        progress, total=total, processed=processed, refreshed=refreshed, failed=failed
+    )
     for currency, cards in by_currency.items():
         pairs = [(tracked.request, tracked.scryfall_id) for tracked in cards]
         results = scryfall.fetch_card_prices_by_id(pairs, currency)
@@ -183,18 +206,28 @@ def refresh_cards(
         def log_import_progress(update: dict) -> None:
             failures = [asdict(failure) for failure in update["failures"]]
             if failures:
-                log(f"PRICE REFRESH PROGRESS {update['processed']}/{update['started']}: {failures[-1]}", level="WARNING")
+                log(
+                    f"PRICE REFRESH PROGRESS {update['processed']}/{update['started']}: {failures[-1]}",
+                    level="WARNING",
+                )
 
         # Save through the normal importer path when the batch lookup had to fall back
         # to per-card behavior; otherwise persist the already-fetched prices directly.
         if len(results) != len(cards):
-            def import_progress(update: dict[str, Any]) -> None:
+
+            def import_progress(
+                update: dict[str, Any],
+                *,
+                completed=processed,
+                refreshed_so_far=refreshed,
+                failed_so_far=failed,
+            ) -> None:
                 report_refresh_progress(
                     progress,
                     total=total,
-                    processed=processed + update["processed"],
-                    refreshed=refreshed + update["imported"],
-                    failed=failed + len(update["failures"]),
+                    processed=completed + update["processed"],
+                    refreshed=refreshed_so_far + update["imported"],
+                    failed=failed_so_far + len(update["failures"]),
                 )
 
             result = import_cards(
@@ -202,25 +235,51 @@ def refresh_cards(
                 store,
                 currency,
                 client=scryfall,
-                progress=lambda update: (log_import_progress(update), import_progress(update)),
+                progress=lambda update: (
+                    log_import_progress(update),
+                    import_progress(update),
+                ),
             )
             refreshed += result.imported
             processed += result.processed
             failed += len(result.failures)
-            report_refresh_progress(progress, total=total, processed=processed, refreshed=refreshed, failed=failed)
+            report_refresh_progress(
+                progress,
+                total=total,
+                processed=processed,
+                refreshed=refreshed,
+                failed=failed,
+            )
             continue
 
         for tracked in cards:
-            price, error = by_request.get(id(tracked.request), (None, RuntimeError("card not refreshed")))
+            price, error = by_request.get(
+                id(tracked.request), (None, RuntimeError("card not refreshed"))
+            )
             processed += 1
             if error is not None or price is None:
-                log(f"PRICE REFRESH FAILED {tracked.request.name}: {error or 'card not found'}", level="ERROR")
+                log(
+                    f"PRICE REFRESH FAILED {tracked.request.name}: {error or 'card not found'}",
+                    level="ERROR",
+                )
                 failed += 1
-                report_refresh_progress(progress, total=total, processed=processed, refreshed=refreshed, failed=failed)
+                report_refresh_progress(
+                    progress,
+                    total=total,
+                    processed=processed,
+                    refreshed=refreshed,
+                    failed=failed,
+                )
                 continue
             store.save_snapshot(tracked.request, price, entry_id=tracked.id)
             refreshed += 1
-            report_refresh_progress(progress, total=total, processed=processed, refreshed=refreshed, failed=failed)
+            report_refresh_progress(
+                progress,
+                total=total,
+                processed=processed,
+                refreshed=refreshed,
+                failed=failed,
+            )
 
     return refreshed
 
@@ -234,14 +293,23 @@ def report_refresh_progress(
     failed: int,
 ) -> None:
     if progress:
-        progress({"total": total, "processed": processed, "refreshed": refreshed, "failed": failed})
+        progress(
+            {
+                "total": total,
+                "processed": processed,
+                "refreshed": refreshed,
+                "failed": failed,
+            }
+        )
 
 
 def iso_or_none(value: datetime | None) -> str | None:
     return value.isoformat(timespec="seconds") if value is not None else None
 
 
-def refresh_status_payload(status: RefreshStatus, interval_seconds: int) -> dict[str, Any]:
+def refresh_status_payload(
+    status: RefreshStatus, interval_seconds: int
+) -> dict[str, Any]:
     return {
         "running": status.running,
         "last_started_at": iso_or_none(status.last_started_at),
@@ -263,7 +331,7 @@ def refresh_collection_stats_log(database_url: str | None) -> str:
             return format_collection_stats(store.collection_stats())
         finally:
             store.close()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - collection statistics must never hide the original operation error
         return f"collection_stats_error={exc}"
 
 

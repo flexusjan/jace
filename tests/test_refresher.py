@@ -1,6 +1,6 @@
-from datetime import datetime, timezone
-from decimal import Decimal
 import unittest
+from datetime import UTC, datetime
+from decimal import Decimal
 from unittest.mock import patch
 
 from jace.models import CardPrice, CardRequest
@@ -48,20 +48,24 @@ class FakeScryfall:
 
 class RefresherTest(unittest.TestCase):
     def test_iso_or_none_formats_seconds_or_none(self):
-        value = datetime(2026, 2, 1, 12, 30, 45, 123456, tzinfo=timezone.utc)
+        value = datetime(2026, 2, 1, 12, 30, 45, 123456, tzinfo=UTC)
 
         self.assertEqual(iso_or_none(value), "2026-02-01T12:30:45+00:00")
         self.assertIsNone(iso_or_none(None))
 
     def test_format_collection_stats(self):
         self.assertEqual(
-            format_collection_stats(CollectionStats(cards=2, tracked_entries=3, snapshots=4)),
+            format_collection_stats(
+                CollectionStats(cards=2, tracked_entries=3, snapshots=4)
+            ),
             "cards=2 tracked_entries=3 snapshots=4",
         )
 
     @patch("jace.refresher.refresh_cards", return_value=1)
     @patch("jace.refresher.PriceStore")
-    def test_refresh_prices_uses_stale_cards_and_closes_store(self, price_store, refreshed):
+    def test_refresh_prices_uses_stale_cards_and_closes_store(
+        self, price_store, refreshed
+    ):
         tracked = tracked_card("entry-1", "card-1", "Sol Ring")
         store = FakeRefreshStore([tracked])
 
@@ -81,7 +85,9 @@ class RefresherTest(unittest.TestCase):
 
     @patch("jace.refresher.refresh_cards", return_value=1)
     @patch("jace.refresher.PriceStore")
-    def test_refresh_prices_force_uses_all_tracked_cards(self, price_store, refresh_cards):
+    def test_refresh_prices_force_uses_all_tracked_cards(
+        self, price_store, refresh_cards
+    ):
         store = FakeRefreshStore([tracked_card("entry-1", "card-1", "Sol Ring")])
 
         price_store.return_value = store
@@ -101,7 +107,9 @@ class RefresherTest(unittest.TestCase):
         count = refresh_prices(None, progress=updates.append)
 
         self.assertEqual(count, 0)
-        self.assertEqual(updates, [{"total": 0, "processed": 0, "refreshed": 0, "failed": 0}])
+        self.assertEqual(
+            updates, [{"total": 0, "processed": 0, "refreshed": 0, "failed": 0}]
+        )
         self.assertTrue(store.closed)
 
     @patch("jace.refresher.ScryfallClient")
@@ -125,7 +133,9 @@ class RefresherTest(unittest.TestCase):
 
         self.assertEqual(refreshed, 1)
         self.assertEqual(store.saved, [(sol_ring.request, price, "entry-1")])
-        self.assertEqual(updates[-1], {"total": 2, "processed": 2, "refreshed": 1, "failed": 1})
+        self.assertEqual(
+            updates[-1], {"total": 2, "processed": 2, "refreshed": 1, "failed": 1}
+        )
 
     @patch("jace.refresher.ScryfallClient")
     def test_refresh_cards_groups_requests_by_currency(self, scryfall_client):
@@ -133,8 +143,16 @@ class RefresherTest(unittest.TestCase):
         usd_card = tracked_card("entry-2", "card-2", "Counterspell", "usd")
         scryfall = FakeScryfall(
             {
-                "eur": [(eur_card.request, card_price("card-1", "Sol Ring", "EUR"), None)],
-                "usd": [(usd_card.request, card_price("card-2", "Counterspell", "USD"), None)],
+                "eur": [
+                    (eur_card.request, card_price("card-1", "Sol Ring", "EUR"), None)
+                ],
+                "usd": [
+                    (
+                        usd_card.request,
+                        card_price("card-2", "Counterspell", "USD"),
+                        None,
+                    )
+                ],
             }
         )
         store = FakeRefreshStore()
@@ -151,9 +169,11 @@ def tracked_card(entry_id, scryfall_id, name, currency="eur"):
     return TrackedCard(
         id=entry_id,
         scryfall_id=scryfall_id,
-        request=CardRequest(quantity=1, name=name, set_code="ltc", collector_number="314"),
+        request=CardRequest(
+            quantity=1, name=name, set_code="ltc", collector_number="314"
+        ),
         currency=currency,
-        latest_captured_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
+        latest_captured_at=datetime(2026, 2, 1, tzinfo=UTC),
     )
 
 

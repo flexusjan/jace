@@ -1,5 +1,5 @@
-from decimal import Decimal
 import unittest
+from decimal import Decimal
 from unittest.mock import patch
 
 from jace.exchange import ExchangeRateClient, ExchangeRateError, rate_from_payload

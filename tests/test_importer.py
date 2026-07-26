@@ -1,8 +1,9 @@
-from decimal import Decimal
 import unittest
+from decimal import Decimal
 
-from jace.importer import import_cards
+from jace.importer import import_cards, sync_moxfield_cards
 from jace.models import CardPrice, CardRequest
+from jace.storage import MoxfieldSyncResult
 
 
 class FakeClient:
@@ -87,13 +88,37 @@ class FakeStore:
         self.snapshots.append((request, price))
 
 
+class FakeSyncStore(FakeStore):
+    def __init__(self):
+        super().__init__()
+        self.syncs = []
+
+    def apply_moxfield_sync(self, resolved_cards):
+        self.syncs.append(resolved_cards)
+        return MoxfieldSyncResult(
+            synced=len(resolved_cards), added=1, updated=0, reactivated=0, archived=2
+        )
+
+
+class FailingSyncClient:
+    def fetch_card_prices(self, cards, currency):
+        return [(cards[0], None, RuntimeError("not found"))]
+
+
 class ImporterTest(unittest.TestCase):
     def test_progress_reports_card_before_fetch_completes(self):
         updates = []
         store = FakeStore()
 
         result = import_cards(
-            [CardRequest(quantity=1, name="Counterspell", set_code="clu", collector_number="84")],
+            [
+                CardRequest(
+                    quantity=1,
+                    name="Counterspell",
+                    set_code="clu",
+                    collector_number="84",
+                )
+            ],
             store,
             client=FakeClient(),
             progress=updates.append,
@@ -111,8 +136,15 @@ class ImporterTest(unittest.TestCase):
 
         result = import_cards(
             [
-                CardRequest(quantity=1, name="Counterspell", set_code="clu", collector_number="84"),
-                CardRequest(quantity=1, name="Sol Ring", set_code="ltc", collector_number="314"),
+                CardRequest(
+                    quantity=1,
+                    name="Counterspell",
+                    set_code="clu",
+                    collector_number="84",
+                ),
+                CardRequest(
+                    quantity=1, name="Sol Ring", set_code="ltc", collector_number="314"
+                ),
             ],
             store,
             client=client,
@@ -142,6 +174,30 @@ class ImporterTest(unittest.TestCase):
         self.assertEqual([update["processed"] for update in updates], [0, 2, 2, 3])
         self.assertEqual([update["started"] for update in updates], [2, 2, 3, 3])
         self.assertEqual(len(store.snapshots), 3)
+
+    def test_moxfield_sync_resolves_every_card_before_changing_store(self):
+        store = FakeSyncStore()
+        client = FakeBatchClient()
+        requests = [
+            CardRequest(
+                quantity=2, name="Sol Ring", set_code="ltc", collector_number="314"
+            )
+        ]
+
+        result = sync_moxfield_cards(requests, store, client=client)
+
+        self.assertEqual(result.synced, 1)
+        self.assertEqual(len(store.syncs), 1)
+        self.assertEqual(store.syncs[0][0][0].quantity, 2)
+
+    def test_moxfield_sync_does_not_change_store_when_any_card_fails(self):
+        store = FakeSyncStore()
+        requests = [CardRequest(quantity=1, name="Missing Card")]
+
+        with self.assertRaisesRegex(RuntimeError, "no collection changes were made"):
+            sync_moxfield_cards(requests, store, client=FailingSyncClient())
+
+        self.assertEqual(store.syncs, [])
 
 
 if __name__ == "__main__":

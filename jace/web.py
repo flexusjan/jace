@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import json
 import base64
 import binascii
 import errno
 import hmac
+import json
 import threading
 import time
 import uuid
-from dataclasses import asdict
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from decimal import Decimal
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,18 +20,36 @@ from urllib.request import Request, urlopen
 
 from . import APP_USER_AGENT, __version__
 from .config import SUPPORTED_CURRENCIES, app_config
-from .importer import ImportResult, import_cards
+from .importer import (
+    ImportResult,
+    import_cards,
+    merge_card_requests,
+    sync_moxfield_cards,
+)
 from .logs import log
 from .models import CardRequest
 from .moxfield import MoxfieldClient, MoxfieldError
 from .parser import parse_card_csv, parse_card_text
 from .refresher import PriceRefreshScheduler
 from .scryfall import ScryfallError
-from .storage import CollectionStats, HistoryPage, HistoryPoint, PriceStore, ReportRow, ValueHistoryPoint
+from .storage import (
+    CollectionMode,
+    CollectionStats,
+    HistoryPage,
+    HistoryPoint,
+    PriceStore,
+    ReportPage,
+    ReportRow,
+    ValueHistoryPoint,
+)
 
 STATIC_DIR = Path(__file__).with_name("static")
 ALLOWED_IMAGE_HOST_SUFFIX = ".scryfall.io"
-CLIENT_DISCONNECT_ERRORS = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)
+CLIENT_DISCONNECT_ERRORS = (
+    BrokenPipeError,
+    ConnectionResetError,
+    ConnectionAbortedError,
+)
 CLIENT_DISCONNECT_ERRNOS = {errno.EPIPE, errno.ECONNRESET, errno.ECONNABORTED}
 
 
@@ -55,10 +72,16 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
             self._send_index()
             return
         if path == "/app.css":
-            self._send_file(STATIC_DIR / "app.css", "text/css; charset=utf-8", cache=True)
+            self._send_file(
+                STATIC_DIR / "app.css", "text/css; charset=utf-8", cache=True
+            )
             return
         if path == "/app.js":
-            self._send_file(STATIC_DIR / "app.js", "application/javascript; charset=utf-8", cache=True)
+            self._send_file(
+                STATIC_DIR / "app.js",
+                "application/javascript; charset=utf-8",
+                cache=True,
+            )
             return
         if path == "/favicon.svg":
             self._send_file(STATIC_DIR / "favicon.svg", "image/svg+xml", cache=True)
@@ -86,26 +109,61 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
                 f"page={page} page_size={page_size} q={search!r} sort={sort} direction={direction} "
                 f"returned={len(report.rows)} total={report.total_count}"
             )
-            self._send_json(cards_payload(report.rows, pagination=report_pagination_payload(report, page, page_size)))
+            self._send_json(
+                cards_payload(
+                    report.rows,
+                    pagination=report_pagination_payload(report, page, page_size),
+                )
+            )
             return
-        if path.startswith("/api/cards/") and (path.endswith("/history") or path.endswith("/price-history")):
+        if path.startswith("/api/cards/") and path.endswith(
+            ("/history", "/price-history")
+        ):
             suffix = "/price-history" if path.endswith("/price-history") else "/history"
             entry_id = unquote(path.removeprefix("/api/cards/").removesuffix(suffix))
             params = parse_qs(urlparse(self.path).query)
             store = self._request_store()
             try:
-                if "page" in params or "page_size" in params or suffix == "/price-history":
+                if (
+                    "page" in params
+                    or "page_size" in params
+                    or suffix == "/price-history"
+                ):
                     if "sample_size" in params:
-                        sample_size = query_int(params, "sample_size", 500, minimum=2, maximum=1000)
-                        history_page = store.history_sample_for_entry(entry_id, max_points=sample_size)
-                        self._send_json(card_history_payload(history_page.rows, sample=history_sample_payload(history_page, sample_size)))
+                        sample_size = query_int(
+                            params, "sample_size", 500, minimum=2, maximum=1000
+                        )
+                        history_page = store.history_sample_for_entry(
+                            entry_id, max_points=sample_size
+                        )
+                        self._send_json(
+                            card_history_payload(
+                                history_page.rows,
+                                sample=history_sample_payload(
+                                    history_page, sample_size
+                                ),
+                            )
+                        )
                     else:
                         page = query_int(params, "page", 1, minimum=1)
-                        page_size = query_int(params, "page_size", 100, minimum=1, maximum=500)
-                        history_page = store.history_page_for_entry(entry_id, limit=page_size, offset=(page - 1) * page_size)
-                        self._send_json(card_history_payload(history_page.rows, pagination=history_pagination_payload(history_page, page, page_size)))
+                        page_size = query_int(
+                            params, "page_size", 100, minimum=1, maximum=500
+                        )
+                        history_page = store.history_page_for_entry(
+                            entry_id, limit=page_size, offset=(page - 1) * page_size
+                        )
+                        self._send_json(
+                            card_history_payload(
+                                history_page.rows,
+                                pagination=history_pagination_payload(
+                                    history_page, page, page_size
+                                ),
+                            )
+                        )
                 else:
-                    self._send_json(card_history_payload(store.history_rows_for_entry(entry_id)))
+                    self._send_json(
+                        card_history_payload(store.history_rows_for_entry(entry_id))
+                    )
             finally:
                 self._close_request_store(store)
             return
@@ -132,6 +190,9 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
         if path == "/api/refresh-status":
             self._send_json(self.refresher.status())
             return
+        if path == "/api/collection-mode":
+            self._send_json(collection_mode_payload(self.store.collection_mode()))
+            return
         if path.startswith("/api/import-jobs/"):
             self._send_json(self.jobs.payload(path.removeprefix("/api/import-jobs/")))
             return
@@ -151,9 +212,17 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
         if path == "/api/import":
             self._handle_import()
             return
+        if path == "/api/moxfield-sync":
+            self._handle_moxfield_sync()
+            return
+        if path == "/api/collection-mode":
+            self._handle_collection_mode()
+            return
         if path == "/api/refresh":
             started, payload = self.refresher.refresh_now()
-            self._send_json(payload, HTTPStatus.ACCEPTED if started else HTTPStatus.CONFLICT)
+            self._send_json(
+                payload, HTTPStatus.ACCEPTED if started else HTTPStatus.CONFLICT
+            )
             return
         self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -175,22 +244,38 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
 
     def _handle_import(self) -> None:
         try:
+            if self.store.collection_mode().mode == "moxfield":
+                raise ValueError(
+                    "Manual imports are disabled while Moxfield sync is active"
+                )
             payload = self._read_json_body()
             requests = import_requests_from_payload(payload)
             if not requests:
-                self._send_json({"error": "No cards found in import input"}, HTTPStatus.BAD_REQUEST)
+                self._send_json(
+                    {"error": "No cards found in import input"}, HTTPStatus.BAD_REQUEST
+                )
                 return
             max_cards = app_config().max_import_cards
             if len(requests) > max_cards:
-                self._send_json({"error": f"Import can contain at most {max_cards} cards"}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+                self._send_json(
+                    {"error": f"Import can contain at most {max_cards} cards"},
+                    HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                )
                 return
-            currency = str(payload.get("currency") or app_config().default_currency).lower()
+            currency = str(
+                payload.get("currency") or app_config().default_currency
+            ).lower()
             if currency not in SUPPORTED_CURRENCIES:
-                self._send_json({"error": "Currency must be eur, usd, or tix"}, HTTPStatus.BAD_REQUEST)
+                self._send_json(
+                    {"error": "Currency must be eur, usd, or tix"},
+                    HTTPStatus.BAD_REQUEST,
+                )
                 return
             job = self.jobs.create(requests, currency, self.store.database_url)
         except json.JSONDecodeError as exc:
-            self._send_json({"error": f"Invalid JSON: {exc.msg}"}, HTTPStatus.BAD_REQUEST)
+            self._send_json(
+                {"error": f"Invalid JSON: {exc.msg}"}, HTTPStatus.BAD_REQUEST
+            )
             return
         except RequestTooLargeError as exc:
             self._send_json({"error": str(exc)}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
@@ -204,17 +289,71 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
 
         self._send_json(job, HTTPStatus.ACCEPTED)
 
+    def _handle_moxfield_sync(self) -> None:
+        try:
+            payload = self._read_json_body()
+            text = str(payload.get("text") or "").strip()
+            if not text:
+                raise ValueError("Moxfield CSV content is required")
+            requests = moxfield_sync_requests_from_csv(text)
+            if not requests:
+                raise ValueError("No cards found in Moxfield CSV")
+            if len(requests) > app_config().max_import_cards:
+                raise RequestTooLargeError(
+                    f"Import can contain at most {app_config().max_import_cards} cards"
+                )
+            currency = str(
+                payload.get("currency") or app_config().default_currency
+            ).lower()
+            if currency not in SUPPORTED_CURRENCIES:
+                raise ValueError("Currency must be eur, usd, or tix")
+            job = self.jobs.create_moxfield_sync(
+                requests, currency, self.store.database_url
+            )
+        except json.JSONDecodeError as exc:
+            self._send_json(
+                {"error": f"Invalid JSON: {exc.msg}"}, HTTPStatus.BAD_REQUEST
+            )
+            return
+        except RequestTooLargeError as exc:
+            self._send_json({"error": str(exc)}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+            return
+        except (ValueError, TooManyJobsError) as exc:
+            self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+        self._send_json(job, HTTPStatus.ACCEPTED)
+
+    def _handle_collection_mode(self) -> None:
+        try:
+            payload = self._read_json_body()
+            mode = str(payload.get("mode") or "").strip().lower()
+            if mode != "manual":
+                raise ValueError(
+                    "Moxfield mode is enabled by a successful Moxfield CSV sync"
+                )
+            self._send_json(
+                collection_mode_payload(self.store.set_collection_mode(mode))
+            )
+        except json.JSONDecodeError as exc:
+            self._send_json(
+                {"error": f"Invalid JSON: {exc.msg}"}, HTTPStatus.BAD_REQUEST
+            )
+        except ValueError as exc:
+            self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+
     def _read_json_body(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length") or "0")
         if length <= 0:
             raise ValueError("Request body is required")
         max_length = app_config().max_request_body_bytes
         if length > max_length:
-            raise RequestTooLargeError(f"Request body must be at most {max_length} bytes")
+            raise RequestTooLargeError(
+                f"Request body must be at most {max_length} bytes"
+            )
         body = self.rfile.read(length).decode("utf-8")
         payload = json.loads(body)
         if not isinstance(payload, dict):
-            raise ValueError("JSON object is required")
+            raise ValueError("JSON object is required")  # noqa: TRY004 - this is a client validation error
         return payload
 
     def _authorized(self) -> bool:
@@ -225,7 +364,9 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
         if credentials is None:
             return False
         username, password = credentials
-        return hmac.compare_digest(username, config.auth_username) and hmac.compare_digest(password, config.auth_password)
+        return hmac.compare_digest(
+            username, config.auth_username
+        ) and hmac.compare_digest(password, config.auth_password)
 
     def _valid_mutation_origin(self) -> bool:
         config = app_config()
@@ -243,7 +384,9 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "same-origin")
-        self.send_header("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+        self.send_header(
+            "Permissions-Policy", "geolocation=(), microphone=(), camera=()"
+        )
         self.send_header(
             "Content-Security-Policy",
             "default-src 'self'; "
@@ -271,33 +414,55 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
 
     def _handle_delete_cards(self) -> None:
         try:
+            if self.store.collection_mode().mode == "moxfield":
+                self._send_json(
+                    {"error": "Remove cards in Moxfield while Moxfield sync is active"},
+                    HTTPStatus.CONFLICT,
+                )
+                return
             payload = self._read_json_body()
             raw_ids = payload.get("tracking_ids")
             if raw_ids is not None:
                 if not isinstance(raw_ids, list):
-                    self._send_json({"error": "tracking_ids must be a list"}, HTTPStatus.BAD_REQUEST)
+                    self._send_json(
+                        {"error": "tracking_ids must be a list"}, HTTPStatus.BAD_REQUEST
+                    )
                     return
-                tracking_ids = [str(value).strip() for value in raw_ids if str(value).strip()]
+                tracking_ids = [
+                    str(value).strip() for value in raw_ids if str(value).strip()
+                ]
                 if not tracking_ids:
-                    self._send_json({"error": "No cards selected"}, HTTPStatus.BAD_REQUEST)
+                    self._send_json(
+                        {"error": "No cards selected"}, HTTPStatus.BAD_REQUEST
+                    )
                     return
                 deleted = self.store.delete_tracked_cards(tracking_ids)
-                log(f"CARDS DELETE tracking_ids requested={len(tracking_ids)} deleted={deleted} {collection_stats_log(self.store)}")
-                self._send_json({"deleted": deleted})
+                log(
+                    f"CARDS ARCHIVED tracking_ids requested={len(tracking_ids)} archived={deleted} {collection_stats_log(self.store)}"
+                )
+                self._send_json({"archived": deleted})
                 return
 
             raw_ids = payload.get("scryfall_ids")
             if not isinstance(raw_ids, list):
-                self._send_json({"error": "scryfall_ids must be a list"}, HTTPStatus.BAD_REQUEST)
+                self._send_json(
+                    {"error": "scryfall_ids must be a list"}, HTTPStatus.BAD_REQUEST
+                )
                 return
-            scryfall_ids = [str(value).strip() for value in raw_ids if str(value).strip()]
+            scryfall_ids = [
+                str(value).strip() for value in raw_ids if str(value).strip()
+            ]
             if not scryfall_ids:
                 self._send_json({"error": "No cards selected"}, HTTPStatus.BAD_REQUEST)
                 return
             deleted = self.store.delete_cards(scryfall_ids)
-            log(f"CARDS DELETE scryfall_ids requested={len(scryfall_ids)} deleted={deleted} {collection_stats_log(self.store)}")
+            log(
+                f"CARDS ARCHIVED scryfall_ids requested={len(scryfall_ids)} archived={deleted} {collection_stats_log(self.store)}"
+            )
         except json.JSONDecodeError as exc:
-            self._send_json({"error": f"Invalid JSON: {exc.msg}"}, HTTPStatus.BAD_REQUEST)
+            self._send_json(
+                {"error": f"Invalid JSON: {exc.msg}"}, HTTPStatus.BAD_REQUEST
+            )
             return
         except RequestTooLargeError as exc:
             self._send_json({"error": str(exc)}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
@@ -306,7 +471,7 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
             self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
             return
 
-        self._send_json({"deleted": deleted})
+        self._send_json({"archived": deleted})
 
     def _handle_card_image(self, scryfall_id: str) -> None:
         if not scryfall_id:
@@ -325,7 +490,9 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
             if data is None:
                 image_url = image.get("image_url")
                 if not image_url:
-                    self.send_error(HTTPStatus.NOT_FOUND, "No image available for this card")
+                    self.send_error(
+                        HTTPStatus.NOT_FOUND, "No image available for this card"
+                    )
                     return
                 try:
                     content_type, data = fetch_image(image_url)
@@ -339,7 +506,10 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
         self._send_response(
             data,
             HTTPStatus.OK,
-            (("Content-Type", content_type), ("Cache-Control", "public, max-age=31536000, immutable")),
+            (
+                ("Content-Type", content_type),
+                ("Cache-Control", "public, max-age=31536000, immutable"),
+            ),
         )
 
     def _send_file(self, path: Path, content_type: str, *, cache: bool = False) -> None:
@@ -351,11 +521,20 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
 
     def _send_index(self) -> None:
         body = rendered_index_html(app_config().dark_theme).encode("utf-8")
-        self._send_response(body, HTTPStatus.OK, (("Content-Type", "text/html; charset=utf-8"),))
+        self._send_response(
+            body, HTTPStatus.OK, (("Content-Type", "text/html; charset=utf-8"),)
+        )
 
     def _send_json(self, payload: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload, default=json_default).encode("utf-8")
-        self._send_response(body, status, (("Content-Type", "application/json; charset=utf-8"), ("Cache-Control", "no-store")))
+        self._send_response(
+            body,
+            status,
+            (
+                ("Content-Type", "application/json; charset=utf-8"),
+                ("Cache-Control", "no-store"),
+            ),
+        )
 
     def _request_store(self) -> PriceStore:
         if self.store.database_url:
@@ -366,7 +545,9 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
         if store is not self.store:
             store.close()
 
-    def _send_response(self, body: bytes, status: HTTPStatus, headers: tuple[tuple[str, str], ...]) -> None:
+    def _send_response(
+        self, body: bytes, status: HTTPStatus, headers: tuple[tuple[str, str], ...]
+    ) -> None:
         try:
             self.send_response(status)
             for name, value in headers:
@@ -375,7 +556,10 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
         except OSError as exc:
-            if isinstance(exc, CLIENT_DISCONNECT_ERRORS) or exc.errno in CLIENT_DISCONNECT_ERRNOS:
+            if (
+                isinstance(exc, CLIENT_DISCONNECT_ERRORS)
+                or exc.errno in CLIENT_DISCONNECT_ERRNOS
+            ):
                 return
             raise
 
@@ -386,12 +570,19 @@ def serve(host: str, port: int, database_url: str | None) -> int:
     log(f"COLLECTION STARTUP {collection_stats_log(store)}")
     jobs = ImportJobs()
     value_history_cache = TimedPayloadCache(ttl_seconds=30)
-    refresher = PriceRefreshScheduler(store.database_url, interval_seconds=config.refresh_interval_seconds)
+    refresher = PriceRefreshScheduler(
+        store.database_url, interval_seconds=config.refresh_interval_seconds
+    )
     refresher.start()
     handler = type(
         "ConfiguredPriceTrackerHandler",
         (PriceTrackerHandler,),
-        {"store": store, "jobs": jobs, "refresher": refresher, "value_history_cache": value_history_cache},
+        {
+            "store": store,
+            "jobs": jobs,
+            "refresher": refresher,
+            "value_history_cache": value_history_cache,
+        },
     )
     server = ThreadingHTTPServer((host, port), handler)
     log(f"Serving MTG price tracker on http://{host}:{port}")
@@ -429,13 +620,19 @@ def cards_payload(
                 "latest_price": decimal_to_string(row.latest_price),
                 "first_price": decimal_to_string(row.first_price),
                 "change": decimal_to_string(price_change(row)),
-                "latest_captured_at": row.latest_captured_at.isoformat(timespec="seconds"),
-                "first_captured_at": row.first_captured_at.isoformat(timespec="seconds"),
+                "latest_captured_at": row.latest_captured_at.isoformat(
+                    timespec="seconds"
+                ),
+                "first_captured_at": row.first_captured_at.isoformat(
+                    timespec="seconds"
+                ),
                 **(
                     {
                         "history": [
                             {
-                                "captured_at": point.captured_at.isoformat(timespec="seconds"),
+                                "captured_at": point.captured_at.isoformat(
+                                    timespec="seconds"
+                                ),
                                 "price": decimal_to_string(point.price),
                                 "currency": point.currency,
                             }
@@ -466,7 +663,9 @@ def report_pagination_payload(report: Any, page: int, page_size: int) -> dict[st
     }
 
 
-def history_pagination_payload(history_page: HistoryPage, page: int, page_size: int) -> dict[str, Any]:
+def history_pagination_payload(
+    history_page: HistoryPage, page: int, page_size: int
+) -> dict[str, Any]:
     total_pages = max(1, (history_page.total_count + page_size - 1) // page_size)
     return {
         "page": min(page, total_pages),
@@ -476,7 +675,9 @@ def history_pagination_payload(history_page: HistoryPage, page: int, page_size: 
     }
 
 
-def history_sample_payload(history_page: HistoryPage, sample_size: int) -> dict[str, Any]:
+def history_sample_payload(
+    history_page: HistoryPage, sample_size: int
+) -> dict[str, Any]:
     return {
         "sample_size": sample_size,
         "sampled_count": len(history_page.rows),
@@ -490,7 +691,14 @@ def query_str(params: dict[str, list[str]], name: str, default: str) -> str:
     return values[0].strip() if values and values[0].strip() else default
 
 
-def query_int(params: dict[str, list[str]], name: str, default: int, *, minimum: int, maximum: int | None = None) -> int:
+def query_int(
+    params: dict[str, list[str]],
+    name: str,
+    default: int,
+    *,
+    minimum: int,
+    maximum: int | None = None,
+) -> int:
     values = params.get(name)
     if not values:
         return default
@@ -540,12 +748,19 @@ def value_history_payload(history: list[ValueHistoryPoint]) -> dict[str, Any]:
     }
 
 
-def summary_payload(report: ReportPage, value_history: list[ValueHistoryPoint]) -> dict[str, Any]:
+def summary_payload(
+    report: ReportPage, value_history: list[ValueHistoryPoint]
+) -> dict[str, Any]:
     first = value_history[0] if value_history else None
     latest = value_history[-1] if value_history else None
     currency = report.currency or (latest.currency if latest else None)
     change = None
-    if first and latest and first.total_value is not None and latest.total_value is not None:
+    if (
+        first
+        and latest
+        and first.total_value is not None
+        and latest.total_value is not None
+    ):
         change = latest.total_value - first.total_value
 
     return {
@@ -553,6 +768,15 @@ def summary_payload(report: ReportPage, value_history: list[ValueHistoryPoint]) 
         "total_value": money_string(report.total_value, currency),
         "change": signed_money_string(change, currency),
         "currency": currency,
+    }
+
+
+def collection_mode_payload(mode: CollectionMode) -> dict[str, str | None]:
+    return {
+        "mode": mode.mode,
+        "last_sync_at": mode.last_sync_at.isoformat(timespec="seconds")
+        if mode.last_sync_at
+        else None,
     }
 
 
@@ -577,6 +801,20 @@ def import_requests_from_payload(payload: dict[str, Any]) -> list[CardRequest]:
     if not text:
         raise ValueError("Card text is required")
     return parse_card_text(text, source="frontend")
+
+
+def moxfield_sync_requests_from_csv(text: str) -> list[CardRequest]:
+    requests = merge_card_requests(parse_card_csv(text, source="moxfield"))
+    missing_identity = [
+        request.name
+        for request in requests
+        if not request.set_code or not request.collector_number
+    ]
+    if missing_identity:
+        raise ValueError(
+            "Moxfield CSV must include Edition and Collector Number for every card; no collection changes were made"
+        )
+    return requests
 
 
 def basic_auth_credentials(header: str | None) -> tuple[str, str] | None:
@@ -619,6 +857,7 @@ class ImportJob:
     id: str
     total: int
     currency: str
+    kind: str = "import"
     status: str = "queued"
     started: int = 0
     processed: int = 0
@@ -626,6 +865,7 @@ class ImportJob:
     current_card: str | None = None
     failures: list[dict[str, str]] = field(default_factory=list)
     error: str | None = None
+    sync: dict[str, int] | None = None
 
 
 class ImportJobs:
@@ -633,17 +873,55 @@ class ImportJobs:
         self._jobs: dict[str, ImportJob] = {}
         self._lock = threading.Lock()
 
-    def create(self, requests: list[CardRequest], currency: str, database_url: str | None) -> dict[str, Any]:
-        job = ImportJob(id=uuid.uuid4().hex, total=len(requests), currency=currency)
-        with self._lock:
-            running = sum(1 for current in self._jobs.values() if current.status in {"queued", "running"})
-            max_jobs = app_config().max_import_jobs
-            if running >= max_jobs:
-                raise TooManyJobsError(f"At most {max_jobs} import jobs can run at once")
-            self._jobs[job.id] = job
-        thread = threading.Thread(target=self._run, args=(job.id, requests, currency, database_url), daemon=True)
+    def create(
+        self, requests: list[CardRequest], currency: str, database_url: str | None
+    ) -> dict[str, Any]:
+        job = self._create_job("import", len(requests), currency)
+        thread = threading.Thread(
+            target=self._run,
+            args=(job.id, requests, currency, database_url),
+            daemon=True,
+        )
         thread.start()
         return self.payload(job.id)
+
+    def create_moxfield_sync(
+        self, requests: list[CardRequest], currency: str, database_url: str | None
+    ) -> dict[str, Any]:
+        job = self._create_job("moxfield_sync", len(requests), currency)
+        thread = threading.Thread(
+            target=self._run_moxfield_sync,
+            args=(job.id, requests, currency, database_url),
+            daemon=True,
+        )
+        thread.start()
+        return self.payload(job.id)
+
+    def _create_job(self, kind: str, total: int, currency: str) -> ImportJob:
+        job = ImportJob(id=uuid.uuid4().hex, total=total, currency=currency, kind=kind)
+        with self._lock:
+            running = [
+                current
+                for current in self._jobs.values()
+                if current.status in {"queued", "running"}
+            ]
+            if kind == "moxfield_sync" and running:
+                raise TooManyJobsError(
+                    "Wait for running imports before starting a Moxfield sync"
+                )
+            if kind == "import" and any(
+                current.kind == "moxfield_sync" for current in running
+            ):
+                raise TooManyJobsError(
+                    "Manual imports are unavailable while a Moxfield sync is running"
+                )
+            max_jobs = app_config().max_import_jobs
+            if len(running) >= max_jobs:
+                raise TooManyJobsError(
+                    f"At most {max_jobs} import jobs can run at once"
+                )
+            self._jobs[job.id] = job
+        return job
 
     def payload(self, job_id: str) -> dict[str, Any]:
         with self._lock:
@@ -652,11 +930,19 @@ class ImportJobs:
                 return {"error": "Import job not found"}
             return asdict(job) | {"failed": len(job.failures)}
 
-    def _run(self, job_id: str, requests: list[CardRequest], currency: str, database_url: str | None) -> None:
+    def _run(
+        self,
+        job_id: str,
+        requests: list[CardRequest],
+        currency: str,
+        database_url: str | None,
+    ) -> None:
         self._update(job_id, status="running")
         store: PriceStore | None = None
         try:
-            log(f"IMPORT JOB STARTED {job_id} total={len(requests)} currency={currency}")
+            log(
+                f"IMPORT JOB STARTED {job_id} total={len(requests)} currency={currency}"
+            )
             store = PriceStore(database_url, initialize_schema=False)
             result = import_cards(
                 requests,
@@ -684,9 +970,48 @@ class ImportJobs:
                 f"IMPORT JOB COMPLETED {job_id} total={result.total} imported={result.imported} "
                 f"failed={len(result.failures)} {collection_stats_log(store)}"
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - import jobs must report unexpected failures to the browser
             log(f"IMPORT JOB FAILED {job_id}: {exc}", level="ERROR")
             self._update(job_id, status="error", error=str(exc))
+        finally:
+            if store is not None:
+                store.close()
+
+    def _run_moxfield_sync(
+        self,
+        job_id: str,
+        requests: list[CardRequest],
+        currency: str,
+        database_url: str | None,
+    ) -> None:
+        self._update(
+            job_id,
+            status="running",
+            started=len(requests),
+            current_card="Resolving Moxfield collection",
+        )
+        store: PriceStore | None = None
+        try:
+            log(
+                f"MOXFIELD SYNC STARTED {job_id} total={len(requests)} currency={currency}"
+            )
+            store = PriceStore(database_url, initialize_schema=False)
+            result = sync_moxfield_cards(requests, store, currency)
+            sync = asdict(result)
+            self._update(
+                job_id,
+                status="done",
+                processed=len(requests),
+                imported=result.synced,
+                current_card=None,
+                sync=sync,
+            )
+            log(
+                f"MOXFIELD SYNC COMPLETED {job_id} {sync} {collection_stats_log(store)}"
+            )
+        except Exception as exc:  # noqa: BLE001 - sync jobs must report unexpected failures to the browser
+            log(f"MOXFIELD SYNC FAILED {job_id}: {exc}", level="ERROR")
+            self._update(job_id, status="error", error=str(exc), current_card=None)
         finally:
             if store is not None:
                 store.close()
@@ -738,26 +1063,39 @@ def fetch_image(url: str) -> tuple[str, bytes]:
         with urlopen(request, timeout=config.image_fetch_timeout_seconds) as response:
             content_type = response.headers.get_content_type() or "image/jpeg"
             if not content_type.startswith("image/"):
-                raise ImageFetchError(f"Scryfall image returned unexpected content type {content_type}")
+                raise ImageFetchError(
+                    f"Scryfall image returned unexpected content type {content_type}"
+                )
             content_length = response.headers.get("Content-Length")
-            if content_length is not None and int(content_length) > config.max_image_bytes:
-                raise ImageFetchError(f"Scryfall image exceeded {config.max_image_bytes} bytes")
+            if (
+                content_length is not None
+                and int(content_length) > config.max_image_bytes
+            ):
+                raise ImageFetchError(
+                    f"Scryfall image exceeded {config.max_image_bytes} bytes"
+                )
             data = response.read(config.max_image_bytes + 1)
             if len(data) > config.max_image_bytes:
-                raise ImageFetchError(f"Scryfall image exceeded {config.max_image_bytes} bytes")
+                raise ImageFetchError(
+                    f"Scryfall image exceeded {config.max_image_bytes} bytes"
+                )
             return content_type, data
     except HTTPError as exc:
         raise ImageFetchError(f"Scryfall image returned HTTP {exc.code}") from exc
     except URLError as exc:
         raise ImageFetchError(f"Could not fetch Scryfall image: {exc.reason}") from exc
     except ValueError as exc:
-        raise ImageFetchError(f"Scryfall image returned invalid metadata: {exc}") from exc
+        raise ImageFetchError(
+            f"Scryfall image returned invalid metadata: {exc}"
+        ) from exc
 
 
 def scryfall_image_url_allowed(url: str) -> bool:
     parsed = urlparse(url)
     host = (parsed.hostname or "").casefold()
-    return parsed.scheme == "https" and (host == "scryfall.io" or host.endswith(ALLOWED_IMAGE_HOST_SUFFIX))
+    return parsed.scheme == "https" and (
+        host == "scryfall.io" or host.endswith(ALLOWED_IMAGE_HOST_SUFFIX)
+    )
 
 
 def collection_stats_log(store: PriceStore) -> str:

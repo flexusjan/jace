@@ -26,7 +26,7 @@
         </div>
       </header>
 
-      <section class="import-panel" aria-label="Add cards">
+      <section class="import-panel" id="manual-import-panel" aria-label="Add cards">
         <div class="import-tabs" role="tablist" aria-label="Import source">
           <button class="tab active" type="button" data-import-tab="single">Single</button>
           <button class="tab" type="button" data-import-tab="file">File</button>
@@ -47,8 +47,8 @@
           </div>
           <div class="import-fields hidden" data-import-panel="moxfield">
             <label>
-              <span>Moxfield URL</span>
-              <input id="moxfield-url" type="url" autocomplete="off" placeholder="https://www.moxfield.com/decks/...">
+              <span>Moxfield collection CSV</span>
+              <input id="moxfield-file" type="file" accept=".csv,text/csv">
             </label>
           </div>
           <label class="currency">
@@ -68,6 +68,21 @@
         <div id="import-results" class="import-results"></div>
       </section>
 
+      <section class="import-panel hidden" id="moxfield-sync-panel" aria-label="Moxfield synchronization">
+        <p class="eyebrow">Collection source</p>
+        <h2>Moxfield sync is active</h2>
+        <p>Export your Moxfield collection as CSV, then synchronize it here. Cards missing from the export are archived; their price history remains stored.</p>
+        <form id="moxfield-sync-form" class="import-form">
+          <label>
+            <span>Moxfield collection CSV</span>
+            <input id="moxfield-sync-file" type="file" accept=".csv,text/csv" required>
+          </label>
+          <button id="moxfield-sync-submit" type="submit">Sync collection</button>
+          <button id="moxfield-disable-sync" type="button" class="danger">Switch to manual mode</button>
+        </form>
+        <p id="moxfield-sync-status" class="import-status" aria-live="polite"></p>
+      </section>
+
       <section class="data-toolbar" aria-label="Collection tools">
         <label class="search">
           <span>Search collection</span>
@@ -76,7 +91,7 @@
         <div class="data-actions">
           <div class="action-group selection-actions" aria-live="polite" aria-label="Selection actions">
             <span id="selection-count">0 selected</span>
-            <button id="delete-selected" class="danger" type="button" disabled>Delete</button>
+            <button id="delete-selected" class="danger" type="button" disabled>Remove from collection</button>
           </div>
           <div class="action-group view-actions" aria-label="Table view">
             <details class="column-menu">

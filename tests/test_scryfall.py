@@ -25,7 +25,9 @@ class StaticConverter:
 class ScryfallTest(unittest.TestCase):
     def test_card_image_url_uses_normal_image(self):
         self.assertEqual(
-            card_image_url({"image_uris": {"small": "small.jpg", "normal": "normal.jpg"}}),
+            card_image_url(
+                {"image_uris": {"small": "small.jpg", "normal": "normal.jpg"}}
+            ),
             "normal.jpg",
         )
 
@@ -39,23 +41,43 @@ class ScryfallTest(unittest.TestCase):
         self.assertEqual(scryfall_card_path("thb", "108★"), "/cards/thb/108%E2%98%85")
 
     def test_collection_identifier_prefers_set_and_collector_number(self):
-        identifier = collection_identifier(CardRequest(quantity=1, name="Sol Ring", set_code="ltc", collector_number="314"))
+        identifier = collection_identifier(
+            CardRequest(
+                quantity=1, name="Sol Ring", set_code="ltc", collector_number="314"
+            )
+        )
 
         self.assertEqual(identifier, {"set": "ltc", "collector_number": "314"})
 
     def test_collection_identifier_uses_name_and_set_without_collector_number(self):
-        identifier = collection_identifier(CardRequest(quantity=1, name="Sol Ring", set_code="ltc"))
+        identifier = collection_identifier(
+            CardRequest(quantity=1, name="Sol Ring", set_code="ltc")
+        )
 
         self.assertEqual(identifier, {"name": "Sol Ring", "set": "ltc"})
 
     def test_match_collection_data_restores_input_order(self):
         requests = [
-            CardRequest(quantity=1, name="Counterspell", set_code="clu", collector_number="84"),
-            CardRequest(quantity=1, name="Sol Ring", set_code="ltc", collector_number="314"),
+            CardRequest(
+                quantity=1, name="Counterspell", set_code="clu", collector_number="84"
+            ),
+            CardRequest(
+                quantity=1, name="Sol Ring", set_code="ltc", collector_number="314"
+            ),
         ]
         data = [
-            {"id": "card-2", "name": "Sol Ring", "set": "ltc", "collector_number": "314"},
-            {"id": "card-1", "name": "Counterspell", "set": "clu", "collector_number": "84"},
+            {
+                "id": "card-2",
+                "name": "Sol Ring",
+                "set": "ltc",
+                "collector_number": "314",
+            },
+            {
+                "id": "card-1",
+                "name": "Counterspell",
+                "set": "clu",
+                "collector_number": "84",
+            },
         ]
 
         matched = match_collection_data(requests, data)
@@ -65,10 +87,21 @@ class ScryfallTest(unittest.TestCase):
 
     def test_match_collection_data_returns_none_for_missing_cards(self):
         requests = [
-            CardRequest(quantity=1, name="Counterspell", set_code="clu", collector_number="84"),
-            CardRequest(quantity=1, name="Sol Ring", set_code="ltc", collector_number="314"),
+            CardRequest(
+                quantity=1, name="Counterspell", set_code="clu", collector_number="84"
+            ),
+            CardRequest(
+                quantity=1, name="Sol Ring", set_code="ltc", collector_number="314"
+            ),
         ]
-        data = [{"id": "card-1", "name": "Counterspell", "set": "clu", "collector_number": "84"}]
+        data = [
+            {
+                "id": "card-1",
+                "name": "Counterspell",
+                "set": "clu",
+                "collector_number": "84",
+            }
+        ]
 
         self.assertIsNone(match_collection_data(requests, data))
 
@@ -110,28 +143,53 @@ class ScryfallTest(unittest.TestCase):
         self.assertEqual(chunks([1, 2, 3], client.collection_batch_size), [[1, 2], [3]])
 
     def test_card_price_uses_foil_price_when_requested(self):
-        price = card_price_from_data(card_data({"eur": "1.00", "eur_foil": "2.50"}, finishes=["nonfoil", "foil"]), "eur", "Foil")
+        price = card_price_from_data(
+            card_data(
+                {"eur": "1.00", "eur_foil": "2.50"}, finishes=["nonfoil", "foil"]
+            ),
+            "eur",
+            "Foil",
+        )
 
         self.assertEqual(price.price, Decimal("2.50"))
 
     def test_card_price_prefers_converted_usd_foil_over_eur_foil_outliers(self):
         converter = StaticConverter()
 
-        price = card_price_from_data(card_data({"usd_foil": "25.11", "eur_foil": "1582.88"}, finishes=["nonfoil", "foil"]), "eur", "Foil", converter)
+        price = card_price_from_data(
+            card_data(
+                {"usd_foil": "25.11", "eur_foil": "1582.88"},
+                finishes=["nonfoil", "foil"],
+            ),
+            "eur",
+            "Foil",
+            converter,
+        )
 
         self.assertEqual(price.price, Decimal("50.22"))
         self.assertEqual(converter.source_currency, "usd")
         self.assertEqual(converter.target_currency, "eur")
 
     def test_card_price_infers_foil_for_foil_only_card(self):
-        price = card_price_from_data(card_data({"eur": None, "eur_foil": "1.50"}, finishes=["foil"]), "eur", "Non-Foil")
+        price = card_price_from_data(
+            card_data({"eur": None, "eur_foil": "1.50"}, finishes=["foil"]),
+            "eur",
+            "Non-Foil",
+        )
 
         self.assertEqual(price.price, Decimal("1.50"))
 
-    def test_card_price_converts_other_fiat_currency_when_requested_currency_missing(self):
+    def test_card_price_converts_other_fiat_currency_when_requested_currency_missing(
+        self,
+    ):
         converter = StaticConverter()
 
-        price = card_price_from_data(card_data({"eur": None, "usd": "3.00"}, finishes=["nonfoil"]), "eur", "Non-Foil", converter)
+        price = card_price_from_data(
+            card_data({"eur": None, "usd": "3.00"}, finishes=["nonfoil"]),
+            "eur",
+            "Non-Foil",
+            converter,
+        )
 
         self.assertEqual(price.price, Decimal("6.00"))
         self.assertEqual(converter.source_currency, "usd")

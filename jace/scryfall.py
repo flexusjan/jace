@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import threading
 import time
+from collections.abc import Iterator
 from decimal import Decimal
-from typing import Iterator, Protocol, TypeVar
+from typing import Protocol, TypeVar
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
@@ -23,7 +24,9 @@ from .models import CardPrice, CardRequest
 BASE_URL = DEFAULT_SCRYFALL_BASE_URL
 COLLECTION_BATCH_SIZE = DEFAULT_SCRYFALL_BULK_SIZE
 DEFAULT_REQUEST_INTERVAL_SECONDS = DEFAULT_SCRYFALL_REQUEST_INTERVAL_SECONDS
-COLLECTION_REQUEST_INTERVAL_SECONDS = DEFAULT_SCRYFALL_COLLECTION_REQUEST_INTERVAL_SECONDS
+COLLECTION_REQUEST_INTERVAL_SECONDS = (
+    DEFAULT_SCRYFALL_COLLECTION_REQUEST_INTERVAL_SECONDS
+)
 
 _RATE_LIMIT_LOCK = threading.Lock()
 _LAST_REQUEST_AT = 0.0
@@ -38,7 +41,9 @@ CardPriceResult = tuple[CardRequest, CardPrice | None, Exception | None]
 
 
 class CurrencyConverter(Protocol):
-    def convert(self, amount: Decimal, source_currency: str, target_currency: str) -> Decimal:
+    def convert(
+        self, amount: Decimal, source_currency: str, target_currency: str
+    ) -> Decimal:
         pass
 
 
@@ -53,24 +58,40 @@ class ScryfallClient:
     ) -> None:
         config = app_config()
         self.base_url = (base_url or config.scryfall_base_url).rstrip("/")
-        self.timeout = timeout if timeout is not None else config.scryfall_timeout_seconds
-        self.pause_seconds = pause_seconds if pause_seconds is not None else config.scryfall_request_interval_seconds
-        self.collection_pause_seconds = (
-            collection_pause_seconds if collection_pause_seconds is not None else config.scryfall_collection_request_interval_seconds
+        self.timeout = (
+            timeout if timeout is not None else config.scryfall_timeout_seconds
         )
-        self.collection_batch_size = collection_batch_size if collection_batch_size is not None else config.scryfall_bulk_size
+        self.pause_seconds = (
+            pause_seconds
+            if pause_seconds is not None
+            else config.scryfall_request_interval_seconds
+        )
+        self.collection_pause_seconds = (
+            collection_pause_seconds
+            if collection_pause_seconds is not None
+            else config.scryfall_collection_request_interval_seconds
+        )
+        self.collection_batch_size = (
+            collection_batch_size
+            if collection_batch_size is not None
+            else config.scryfall_bulk_size
+        )
 
     def fetch_card_price(self, card: CardRequest, currency: str = "eur") -> CardPrice:
         data = self._get_card(card)
         return card_price_from_data(data, currency, card.finish)
 
-    def fetch_card_prices(self, cards: list[CardRequest], currency: str = "eur") -> list[CardPriceResult]:
+    def fetch_card_prices(
+        self, cards: list[CardRequest], currency: str = "eur"
+    ) -> list[CardPriceResult]:
         results: list[CardPriceResult] = []
         for batch_results in self.fetch_card_price_batches(cards, currency):
             results.extend(batch_results)
         return results
 
-    def fetch_card_price_batches(self, cards: list[CardRequest], currency: str = "eur") -> Iterator[list[CardPriceResult]]:
+    def fetch_card_price_batches(
+        self, cards: list[CardRequest], currency: str = "eur"
+    ) -> Iterator[list[CardPriceResult]]:
         for batch in chunks(cards, self.collection_batch_size):
             batch_results: list[CardPriceResult] = []
             try:
@@ -87,7 +108,13 @@ class ScryfallClient:
 
             for card, card_data in zip(batch, data):
                 try:
-                    batch_results.append((card, card_price_from_data(card_data, currency, card.finish), None))
+                    batch_results.append(
+                        (
+                            card,
+                            card_price_from_data(card_data, currency, card.finish),
+                            None,
+                        )
+                    )
                 except (KeyError, ValueError, ExchangeRateError) as exc:
                     batch_results.append((card, None, exc))
             yield batch_results
@@ -103,21 +130,37 @@ class ScryfallClient:
                 response_data = self._request(
                     "/cards/collection",
                     method="POST",
-                    body={"identifiers": [{"id": scryfall_id} for _, scryfall_id in batch]},
+                    body={
+                        "identifiers": [{"id": scryfall_id} for _, scryfall_id in batch]
+                    },
                     pause_seconds=self.collection_pause_seconds,
                 ).get("data", [])
             except ScryfallError:
-                results.extend(self._fetch_card_prices_individually([card for card, _ in batch], currency))
+                results.extend(
+                    self._fetch_card_prices_individually(
+                        [card for card, _ in batch], currency
+                    )
+                )
                 continue
 
             data = match_collection_data_by_id(batch, response_data)
             if data is None:
-                results.extend(self._fetch_card_prices_individually([card for card, _ in batch], currency))
+                results.extend(
+                    self._fetch_card_prices_individually(
+                        [card for card, _ in batch], currency
+                    )
+                )
                 continue
 
             for (card, _), card_data in zip(batch, data):
                 try:
-                    results.append((card, card_price_from_data(card_data, currency, card.finish), None))
+                    results.append(
+                        (
+                            card,
+                            card_price_from_data(card_data, currency, card.finish),
+                            None,
+                        )
+                    )
                 except (KeyError, ValueError, ExchangeRateError) as exc:
                     results.append((card, None, exc))
         return results
@@ -149,12 +192,16 @@ class ScryfallClient:
 
     def _get_card(self, card: CardRequest) -> dict:
         if card.set_code and card.collector_number:
-            return self._request(scryfall_card_path(card.set_code, card.collector_number))
+            return self._request(
+                scryfall_card_path(card.set_code, card.collector_number)
+            )
 
         query = f'!"{card.name}"'
         if card.set_code:
             query += f" set:{card.set_code}"
-        return self._request("/cards/search", {"q": query, "unique": "prints"})["data"][0]
+        return self._request("/cards/search", {"q": query, "unique": "prints"})["data"][
+            0
+        ]
 
     def _request(
         self,
@@ -167,7 +214,10 @@ class ScryfallClient:
         url = f"{self.base_url}{path}"
         if params:
             url = f"{url}?{urlencode(params)}"
-        headers = {"User-Agent": APP_USER_AGENT, "Accept": "application/json;q=0.9,*/*;q=0.8"}
+        headers = {
+            "User-Agent": APP_USER_AGENT,
+            "Accept": "application/json;q=0.9,*/*;q=0.8",
+        }
         data = None
         if body is not None:
             headers["Content-Type"] = "application/json"
@@ -186,9 +236,13 @@ class ScryfallClient:
                     retry_after = retry_after_seconds(exc)
                     time.sleep(retry_after if retry_after is not None else 60.0)
                     continue
-                raise ScryfallError(f"Scryfall returned HTTP {exc.code} for {url}: {detail}") from exc
+                raise ScryfallError(
+                    f"Scryfall returned HTTP {exc.code} for {url}: {detail}"
+                ) from exc
             except URLError as exc:
-                raise ScryfallError(f"Could not reach Scryfall at {url}: {exc.reason}") from exc
+                raise ScryfallError(
+                    f"Could not reach Scryfall at {url}: {exc.reason}"
+                ) from exc
 
         raise ScryfallError(f"Scryfall request failed for {url}")
 
@@ -201,8 +255,14 @@ def card_price_from_data(
 ) -> CardPrice:
     prices = data.get("prices") or {}
     normalized_currency = currency.lower()
-    source_currency, raw_price = price_source(prices, normalized_currency, effective_finish(data, finish))
-    price = price_from_source(raw_price, source_currency, normalized_currency, converter) if raw_price and source_currency else None
+    source_currency, raw_price = price_source(
+        prices, normalized_currency, effective_finish(data, finish)
+    )
+    price = (
+        price_from_source(raw_price, source_currency, normalized_currency, converter)
+        if raw_price and source_currency
+        else None
+    )
 
     return CardPrice(
         scryfall_id=data["id"],
@@ -219,7 +279,11 @@ def card_price_from_data(
 def effective_finish(data: dict, requested_finish: str) -> str:
     normalized_finish = normalize_finish(requested_finish)
     finishes = [normalize_finish(value) for value in data.get("finishes") or []]
-    if normalized_finish == "Non-Foil" and len(finishes) == 1 and finishes[0] in {"Foil", "Etched"}:
+    if (
+        normalized_finish == "Non-Foil"
+        and len(finishes) == 1
+        and finishes[0] in {"Foil", "Etched"}
+    ):
         return finishes[0]
     return normalized_finish
 
@@ -233,7 +297,9 @@ def normalize_finish(value: object) -> str:
     return "Non-Foil"
 
 
-def price_source(prices: dict, currency: str, finish: str) -> tuple[str | None, str | None]:
+def price_source(
+    prices: dict, currency: str, finish: str
+) -> tuple[str | None, str | None]:
     candidates = price_candidates(currency, finish)
     candidates.extend(fallback_price_candidates(currency, finish))
     seen: set[tuple[str, str]] = set()
@@ -259,7 +325,9 @@ def price_candidates(currency: str, finish: str) -> list[tuple[str, str]]:
 
 
 def fallback_price_candidates(currency: str, finish: str) -> list[tuple[str, str]]:
-    other_currency = "usd" if currency == "eur" else "eur" if currency == "usd" else None
+    other_currency = (
+        "usd" if currency == "eur" else "eur" if currency == "usd" else None
+    )
     candidates: list[tuple[str, str]] = []
     if finish == "Foil":
         if currency != "eur" and other_currency:
@@ -270,7 +338,12 @@ def fallback_price_candidates(currency: str, finish: str) -> list[tuple[str, str
     elif finish == "Etched":
         candidates.extend([(currency, currency)])
         if other_currency:
-            candidates.extend([(other_currency, other_currency), (other_currency, f"{other_currency}_foil")])
+            candidates.extend(
+                [
+                    (other_currency, other_currency),
+                    (other_currency, f"{other_currency}_foil"),
+                ]
+            )
     else:
         if other_currency:
             candidates.append((other_currency, other_currency))
@@ -300,21 +373,32 @@ def collection_identifier(card: CardRequest) -> dict[str, str]:
     return {"name": card.name}
 
 
-def match_collection_data(cards: list[CardRequest], data: list[dict]) -> list[dict] | None:
+def match_collection_data(
+    cards: list[CardRequest], data: list[dict]
+) -> list[dict] | None:
     if len(data) != len(cards):
         return None
 
     remaining = list(data)
     matched: list[dict] = []
     for card in cards:
-        index = next((idx for idx, candidate in enumerate(remaining) if card_matches_data(card, candidate)), None)
+        index = next(
+            (
+                idx
+                for idx, candidate in enumerate(remaining)
+                if card_matches_data(card, candidate)
+            ),
+            None,
+        )
         if index is None:
             return None
         matched.append(remaining.pop(index))
     return matched
 
 
-def match_collection_data_by_id(cards: list[tuple[CardRequest, str]], data: list[dict]) -> list[dict] | None:
+def match_collection_data_by_id(
+    cards: list[tuple[CardRequest, str]], data: list[dict]
+) -> list[dict] | None:
     if len(data) != len(cards):
         return None
 
@@ -330,12 +414,13 @@ def match_collection_data_by_id(cards: list[tuple[CardRequest, str]], data: list
 
 def card_matches_data(card: CardRequest, data: dict) -> bool:
     if card.set_code and card.collector_number:
-        return (
-            normalized(data.get("set")) == normalized(card.set_code)
-            and normalized(data.get("collector_number")) == normalized(card.collector_number)
-        )
+        return normalized(data.get("set")) == normalized(card.set_code) and normalized(
+            data.get("collector_number")
+        ) == normalized(card.collector_number)
     if card.set_code:
-        return normalized(data.get("set")) == normalized(card.set_code) and normalized(data.get("name")) == normalized(card.name)
+        return normalized(data.get("set")) == normalized(card.set_code) and normalized(
+            data.get("name")
+        ) == normalized(card.name)
     return normalized(data.get("name")) == normalized(card.name)
 
 
@@ -352,25 +437,6 @@ def wait_for_scryfall_slot(interval_seconds: float) -> None:
             time.sleep(wait_seconds)
             now = time.monotonic()
         _LAST_REQUEST_AT = now
-    # Rate limit check must cover the entire request to prevent concurrent requests
-    # from bypassing the limit by interleaving the wait with the actual request
-
-
-# Per-instance rate limit tracking to prevent concurrent requests from bypassing limits
-class _ScryfallRateLimiter:
-    _lock = threading.Lock()
-    _last_request_at: dict[int, float] = {}
-
-    @classmethod
-    def wait_for_slot(cls, interval_seconds: float) -> None:
-        instance_id = id(_ScryfallRateLimiter)
-        with cls._lock:
-            now = time.monotonic()
-            wait_seconds = cls._last_request_at.get(instance_id, 0.0) + interval_seconds - now
-            if wait_seconds > 0:
-                time.sleep(wait_seconds)
-                now = time.monotonic()
-            cls._last_request_at[instance_id] = now
 
 
 def retry_after_seconds(exc: HTTPError) -> float | None:
@@ -394,7 +460,11 @@ def scryfall_card_path(set_code: str, collector_number: str) -> str:
 def card_image_url(data: dict) -> str | None:
     image_uris = data.get("image_uris")
     if isinstance(image_uris, dict):
-        return image_uris.get("normal") or image_uris.get("large") or image_uris.get("small")
+        return (
+            image_uris.get("normal")
+            or image_uris.get("large")
+            or image_uris.get("small")
+        )
 
     faces = data.get("card_faces")
     if isinstance(faces, list):
@@ -403,5 +473,9 @@ def card_image_url(data: dict) -> str | None:
                 continue
             face_uris = face.get("image_uris")
             if isinstance(face_uris, dict):
-                return face_uris.get("normal") or face_uris.get("large") or face_uris.get("small")
+                return (
+                    face_uris.get("normal")
+                    or face_uris.get("large")
+                    or face_uris.get("small")
+                )
     return None

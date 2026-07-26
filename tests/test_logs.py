@@ -1,6 +1,6 @@
-from io import StringIO
 import re
 import unittest
+from io import StringIO
 
 from jace.logs import log
 
@@ -13,7 +13,9 @@ class LogsTest(unittest.TestCase):
 
         self.assertRegex(
             output.getvalue(),
-            re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} UTC \[\d+\] INFO: hello\n$"),
+            re.compile(
+                r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} UTC \[\d+\] INFO: hello\n$"
+            ),
         )
 
 

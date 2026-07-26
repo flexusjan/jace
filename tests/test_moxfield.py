@@ -21,7 +21,11 @@ class MoxfieldTest(unittest.TestCase):
                     "cards": {
                         "cmd": {
                             "quantity": 1,
-                            "card": {"name": "Atraxa, Praetors' Voice", "set": "2x2", "cn": "190"},
+                            "card": {
+                                "name": "Atraxa, Praetors' Voice",
+                                "set": "2x2",
+                                "cn": "190",
+                            },
                         }
                     }
                 },
@@ -80,7 +84,9 @@ class MoxfieldTest(unittest.TestCase):
         cards = cards_from_deck(deck)
 
         self.assertEqual(len(cards), 2)
-        self.assertEqual({card.condition for card in cards}, {"Near Mint", "Lightly Played"})
+        self.assertEqual(
+            {card.condition for card in cards}, {"Near Mint", "Lightly Played"}
+        )
 
     def test_invalid_quantity_raises_moxfield_error(self):
         deck = {

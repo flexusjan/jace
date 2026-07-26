@@ -52,7 +52,11 @@ class ConfigTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "JACE_SCRYFALL_BULK_SIZE"):
             app_config()
 
-    @patch.dict("os.environ", {"JACE_AUTH_USERNAME": "alice", "JACE_AUTH_PASSWORD": ""}, clear=False)
+    @patch.dict(
+        "os.environ",
+        {"JACE_AUTH_USERNAME": "alice", "JACE_AUTH_PASSWORD": ""},
+        clear=False,
+    )
     def test_rejects_partial_auth_config(self):
         with self.assertRaisesRegex(ValueError, "JACE_AUTH_USERNAME"):
             app_config()

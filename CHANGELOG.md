@@ -1,5 +1,15 @@
 # Changelog
 
+- Make Moxfield synchronization exclusive with other mutating imports to prevent concurrent collection changes.
+- Require exact Moxfield printing identifiers before a sync can alter the collection.
+- Correct Moxfield archive reporting, handle UTF-8 CSV byte-order marks, and remove unused rate-limit code.
+- Clarify CSV and deployment documentation.
+
+- Add Moxfield collection CSV synchronization with an explicit Moxfield-managed collection mode.
+- Archive cards removed manually or by Moxfield synchronization instead of deleting price snapshots.
+- Preserve historical card and price data through an additive, idempotent database migration.
+- Disable manual imports and removals while Moxfield is the active collection source; allow switching back to manual management.
+
 ## 1.2.4 - 2026-07-05
 
 - Add `/api/summary` with collection card count, total value, and total value change for dashboard widgets.

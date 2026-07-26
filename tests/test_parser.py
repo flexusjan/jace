@@ -71,7 +71,9 @@ class ParserTest(unittest.TestCase):
         self.assertEqual(cards[0].collector_number, "177")
         self.assertEqual(cards[0].condition, "Near Mint")
         self.assertEqual(cards[0].language, "English")
-        self.assertEqual(cards[1].name, "Aang, Swift Savior // Aang and La, Ocean's Fury")
+        self.assertEqual(
+            cards[1].name, "Aang, Swift Savior // Aang and La, Ocean's Fury"
+        )
 
     def test_parse_csv_condition_and_language(self):
         cards = parse_card_csv(
@@ -82,6 +84,13 @@ class ParserTest(unittest.TestCase):
         self.assertEqual(cards[0].condition, "Lightly Played")
         self.assertEqual(cards[0].language, "German")
         self.assertEqual(cards[0].finish, "Foil")
+
+    def test_parse_csv_handles_utf8_byte_order_mark_in_count_header(self):
+        cards = parse_card_csv(
+            "\ufeffCount,Name,Edition,Collector Number\n2,Sol Ring,ltc,314\n"
+        )
+
+        self.assertEqual(cards[0].quantity, 2)
 
 
 if __name__ == "__main__":

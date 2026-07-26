@@ -19,7 +19,8 @@ const state = {
   valueHistory: null,
   valueHistoryError: "",
   detailRenderKey: "",
-  detailOpen: false
+  detailOpen: false,
+  collectionMode: "manual"
 };
 
 const COLUMN_STORAGE_KEY = "jace.visibleColumns";
@@ -111,7 +112,14 @@ const importTabs = document.querySelectorAll("[data-import-tab]");
 const importPanels = document.querySelectorAll("[data-import-panel]");
 const singleCard = document.querySelector("#single-card");
 const cardFile = document.querySelector("#card-file");
-const moxfieldUrl = document.querySelector("#moxfield-url");
+const moxfieldFile = document.querySelector("#moxfield-file");
+const manualImportPanel = document.querySelector("#manual-import-panel");
+const moxfieldSyncPanel = document.querySelector("#moxfield-sync-panel");
+const moxfieldSyncForm = document.querySelector("#moxfield-sync-form");
+const moxfieldSyncFile = document.querySelector("#moxfield-sync-file");
+const moxfieldSyncSubmit = document.querySelector("#moxfield-sync-submit");
+const moxfieldDisableSync = document.querySelector("#moxfield-disable-sync");
+const moxfieldSyncStatus = document.querySelector("#moxfield-sync-status");
 const currency = document.querySelector("#currency");
 const sortButtons = document.querySelectorAll("[data-sort]");
 const mobileSortKey = document.querySelector("#mobile-sort-key");
@@ -141,6 +149,8 @@ importTabs.forEach(tab => {
   tab.addEventListener("click", () => setImportTab(tab.dataset.importTab));
 });
 importForm.addEventListener("submit", submitImport);
+moxfieldSyncForm.addEventListener("submit", submitMoxfieldSync);
+moxfieldDisableSync.addEventListener("click", switchToManualMode);
 sortButtons.forEach(button => {
   button.addEventListener("click", () => setSort(button.dataset.sort));
 });
@@ -212,8 +222,24 @@ setInterval(loadRefreshStatus, 30000);
 resumeActiveImport();
 
 async function loadInitialData() {
+  await loadCollectionMode();
   await loadCards();
   deferValueHistoryLoad();
+}
+
+async function loadCollectionMode() {
+  const response = await fetch("/api/collection-mode", { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error("Could not load collection mode");
+  }
+  const mode = await response.json();
+  state.collectionMode = mode.mode || "manual";
+  manualImportPanel.classList.toggle("hidden", state.collectionMode === "moxfield");
+  moxfieldSyncPanel.classList.toggle("hidden", state.collectionMode !== "moxfield");
+  document.querySelector(".selection-actions").classList.toggle("hidden", state.collectionMode === "moxfield");
+  if (state.collectionMode === "moxfield") {
+    moxfieldSyncStatus.textContent = mode.last_sync_at ? `Last synchronized ${formatDate(mode.last_sync_at)}` : "Ready to synchronize";
+  }
 }
 
 function deferValueHistoryLoad() {
@@ -394,7 +420,7 @@ async function submitImport(event) {
 
   try {
     const payload = await importPayload();
-    const response = await fetch("/api/import", {
+    const response = await fetch(payload.source === "moxfield_csv" ? "/api/moxfield-sync" : "/api/import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
@@ -415,6 +441,54 @@ async function submitImport(event) {
   } finally {
     importSubmit.disabled = false;
   }
+}
+
+async function submitMoxfieldSync(event) {
+  event.preventDefault();
+  const file = moxfieldSyncFile.files[0];
+  if (!file) {
+    return;
+  }
+  moxfieldSyncSubmit.disabled = true;
+  moxfieldSyncStatus.className = "import-status";
+  moxfieldSyncStatus.textContent = "Preparing sync...";
+  try {
+    const response = await fetch("/api/moxfield-sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: await file.text(), currency: currency.value })
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || `Request failed with status ${response.status}`);
+    }
+    rememberActiveImport(result.id);
+    await pollImport(result.id);
+    moxfieldSyncFile.value = "";
+  } catch (error) {
+    moxfieldSyncStatus.classList.add("error");
+    moxfieldSyncStatus.textContent = error.message;
+  } finally {
+    moxfieldSyncSubmit.disabled = false;
+  }
+}
+
+async function switchToManualMode() {
+  if (!window.confirm("Switch to manual mode? Existing archived cards stay archived.")) {
+    return;
+  }
+  const response = await fetch("/api/collection-mode", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode: "manual" })
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    moxfieldSyncStatus.classList.add("error");
+    moxfieldSyncStatus.textContent = result.error || "Could not switch to manual mode";
+    return;
+  }
+  await loadCollectionMode();
 }
 
 async function pollImport(jobId) {
@@ -477,10 +551,17 @@ function forgetActiveImport() {
 }
 
 async function loadCardsAfterImport(job) {
-  const summary = `${job.processed}/${job.total} processed, ${job.imported} imported, ${job.failed} failed`;
+  const summary = job.sync
+    ? `${job.sync.synced} synchronized · ${job.sync.added} new · ${job.sync.updated} updated · ${job.sync.reactivated} reactivated · ${job.sync.archived} archived`
+    : `${job.processed}/${job.total} processed, ${job.imported} imported, ${job.failed} failed`;
   await loadCards();
   await loadValueHistory();
-  importStatus.textContent = summary;
+  await loadCollectionMode();
+  if (job.sync) {
+    moxfieldSyncStatus.textContent = summary;
+  } else {
+    importStatus.textContent = summary;
+  }
   importStatus.classList.toggle("warning", Boolean(job.failed));
 }
 
@@ -499,6 +580,9 @@ function renderImportProgress(job) {
     : "";
   const current = job.current_card && total === 1 && processed < total ? `, working on ${job.current_card}` : "";
   importStatus.textContent = `${processed}/${total} processed, ${imported} imported, ${failed} failed${bulk}${current}`;
+  if (state.collectionMode === "moxfield") {
+    moxfieldSyncStatus.textContent = `${processed}/${total} processed, ${imported} synchronized${bulk}${current}`;
+  }
 }
 
 function resetProgress() {
@@ -510,9 +594,13 @@ function resetProgress() {
 async function importPayload() {
   const source = document.querySelector("[data-import-tab].active").dataset.importTab;
   if (source === "moxfield") {
+    const file = moxfieldFile.files[0];
+    if (!file) {
+      throw new Error("Choose your exported Moxfield collection CSV first");
+    }
     return {
-      source: "moxfield",
-      url: moxfieldUrl.value.trim(),
+      source: "moxfield_csv",
+      text: await file.text(),
       currency: currency.value
     };
   }
@@ -561,8 +649,8 @@ function delay(ms) {
 }
 
 function clearImportInput(source) {
-  if (source === "moxfield") {
-    moxfieldUrl.value = "";
+  if (source === "moxfield_csv") {
+    moxfieldFile.value = "";
     return;
   }
   singleCard.value = "";
@@ -625,7 +713,7 @@ function updateSelectionControls(visibleCards) {
 
   const selectedCount = state.selectedIds.size;
   selectionCount.textContent = `${selectedCount} selected`;
-  deleteSelected.disabled = selectedCount === 0;
+  deleteSelected.disabled = selectedCount === 0 || state.collectionMode === "moxfield";
 }
 
 async function deleteSelectedCards() {
@@ -633,7 +721,7 @@ async function deleteSelectedCards() {
   if (ids.length === 0) {
     return;
   }
-  const confirmed = window.confirm(`Delete ${ids.length} selected card${ids.length === 1 ? "" : "s"} and all price history?`);
+  const confirmed = window.confirm(`Remove ${ids.length} selected card${ids.length === 1 ? "" : "s"} from the collection? Their price history will be retained.`);
   if (!confirmed) {
     return;
   }

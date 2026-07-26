@@ -44,9 +44,13 @@ class MoxfieldClient:
                 payload = response.read().decode("utf-8")
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
-            raise MoxfieldError(f"Moxfield returned HTTP {exc.code} for {url}: {detail}") from exc
+            raise MoxfieldError(
+                f"Moxfield returned HTTP {exc.code} for {url}: {detail}"
+            ) from exc
         except URLError as exc:
-            raise MoxfieldError(f"Could not reach Moxfield at {url}: {exc.reason}") from exc
+            raise MoxfieldError(
+                f"Could not reach Moxfield at {url}: {exc.reason}"
+            ) from exc
         return json.loads(payload)
 
 
@@ -103,7 +107,9 @@ def cards_from_card_map(card_map: object) -> list[CardRequest]:
     return cards
 
 
-def request_from_moxfield_entry(fallback_name: str, entry: object) -> CardRequest | None:
+def request_from_moxfield_entry(
+    fallback_name: str, entry: object
+) -> CardRequest | None:
     if not isinstance(entry, dict):
         return None
 
@@ -125,13 +131,20 @@ def request_from_moxfield_entry(fallback_name: str, entry: object) -> CardReques
     language = entry.get("language") or card.get("language") or "English"
     finish = entry.get("finish") or card.get("finish")
     if finish is None:
-        finish = entry.get("foil") or entry.get("isFoil") or card.get("foil") or card.get("isFoil")
+        finish = (
+            entry.get("foil")
+            or entry.get("isFoil")
+            or card.get("foil")
+            or card.get("isFoil")
+        )
     return CardRequest(
         quantity=quantity,
         name=str(name),
         set_code=str(set_code).lower() if set_code else None,
         collector_number=str(collector_number) if collector_number else None,
-        condition=normalize_condition(str(condition) if condition is not None else None),
+        condition=normalize_condition(
+            str(condition) if condition is not None else None
+        ),
         language=normalize_language(str(language) if language is not None else None),
         finish=normalize_finish(str(finish) if finish is not None else None),
     )
@@ -140,7 +153,14 @@ def request_from_moxfield_entry(fallback_name: str, entry: object) -> CardReques
 def merge_requests(requests: list[CardRequest]) -> list[CardRequest]:
     merged: dict[tuple[str, str | None, str | None, str, str, str], CardRequest] = {}
     for request in requests:
-        key = (request.name, request.set_code, request.collector_number, request.condition, request.language, request.finish)
+        key = (
+            request.name,
+            request.set_code,
+            request.collector_number,
+            request.condition,
+            request.language,
+            request.finish,
+        )
         existing = merged.get(key)
         if existing is None:
             merged[key] = request

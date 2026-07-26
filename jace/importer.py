@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from .logs import log
 from .models import CardRequest
 from .scryfall import ScryfallClient, ScryfallError
-from .storage import PriceStore
+from .storage import MoxfieldSyncResult, PriceStore
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,34 @@ class ImportResult:
 
 
 ProgressCallback = Callable[[dict[str, Any]], None]
+
+
+def merge_card_requests(requests: list[CardRequest]) -> list[CardRequest]:
+    """Merge duplicate collection rows without losing distinct print attributes."""
+    merged: dict[tuple[str, str | None, str | None, str, str, str], CardRequest] = {}
+    for request in requests:
+        key = (
+            request.name,
+            request.set_code,
+            request.collector_number,
+            request.condition,
+            request.language,
+            request.finish,
+        )
+        existing = merged.get(key)
+        if existing is None:
+            merged[key] = request
+        else:
+            merged[key] = CardRequest(
+                quantity=existing.quantity + request.quantity,
+                name=existing.name,
+                set_code=existing.set_code,
+                collector_number=existing.collector_number,
+                condition=existing.condition,
+                language=existing.language,
+                finish=existing.finish,
+            )
+    return list(merged.values())
 
 
 def _report_progress(
@@ -55,7 +84,9 @@ def _save_price_results(
 ) -> int:
     for card, price, error in results:
         if error is not None or price is None:
-            failure = ImportFailure(name=card.name, error=str(error or "card not found"))
+            failure = ImportFailure(
+                name=card.name, error=str(error or "card not found")
+            )
             failures.append(failure)
             log(f"IMPORT FAILED {card.name}: {failure.error}", level="ERROR")
         else:
@@ -103,14 +134,25 @@ def import_cards(
                     current_card=current_card,
                 )
 
-            result = ImportResult(total=len(requests), processed=len(requests), imported=imported, failures=failures)
-            log(f"IMPORT COMPLETED total={result.total} processed={result.processed} imported={result.imported} failed={len(result.failures)}")
+            result = ImportResult(
+                total=len(requests),
+                processed=len(requests),
+                imported=imported,
+                failures=failures,
+            )
+            log(
+                f"IMPORT COMPLETED total={result.total} processed={result.processed} imported={result.imported} failed={len(result.failures)}"
+            )
             return result
 
         if hasattr(scryfall, "fetch_card_prices"):
-            for processed, (card, price, error) in enumerate(scryfall.fetch_card_prices(requests, currency), start=1):
+            for processed, (card, price, error) in enumerate(
+                scryfall.fetch_card_prices(requests, currency), start=1
+            ):
                 if error is not None or price is None:
-                    failure = ImportFailure(name=card.name, error=str(error or "card not found"))
+                    failure = ImportFailure(
+                        name=card.name, error=str(error or "card not found")
+                    )
                     failures.append(failure)
                     log(f"IMPORT FAILED {card.name}: {failure.error}", level="ERROR")
                 else:
@@ -126,8 +168,15 @@ def import_cards(
                     current_card=card.name,
                 )
 
-            result = ImportResult(total=len(requests), processed=len(requests), imported=imported, failures=failures)
-            log(f"IMPORT COMPLETED total={result.total} processed={result.processed} imported={result.imported} failed={len(result.failures)}")
+            result = ImportResult(
+                total=len(requests),
+                processed=len(requests),
+                imported=imported,
+                failures=failures,
+            )
+            log(
+                f"IMPORT COMPLETED total={result.total} processed={result.processed} imported={result.imported} failed={len(result.failures)}"
+            )
             return result
 
         for started, card in enumerate(requests, start=1):
@@ -166,9 +215,54 @@ def import_cards(
                 current_card=card.name,
             )
 
-        result = ImportResult(total=len(requests), processed=len(requests), imported=imported, failures=failures)
-        log(f"IMPORT COMPLETED total={result.total} processed={result.processed} imported={result.imported} failed={len(result.failures)}")
+        result = ImportResult(
+            total=len(requests),
+            processed=len(requests),
+            imported=imported,
+            failures=failures,
+        )
+        log(
+            f"IMPORT COMPLETED total={result.total} processed={result.processed} imported={result.imported} failed={len(result.failures)}"
+        )
         return result
     except Exception:
-        log(f"IMPORT FAILED total={len(requests)} processed=unknown imported={imported} failed={len(failures)}", level="ERROR")
+        log(
+            f"IMPORT FAILED total={len(requests)} processed=unknown imported={imported} failed={len(failures)}",
+            level="ERROR",
+        )
         raise
+
+
+def sync_moxfield_cards(
+    requests: list[CardRequest],
+    store: PriceStore,
+    currency: str = "eur",
+    client: ScryfallClient | None = None,
+) -> MoxfieldSyncResult:
+    """Resolve the complete export before changing the collection.
+
+    A sync must never archive cards because a partial Scryfall request failed.
+    """
+    if not requests:
+        raise ValueError("No cards found in Moxfield CSV")
+    scryfall = client or ScryfallClient()
+    results = scryfall.fetch_card_prices(requests, currency)
+    resolved: list[tuple[CardRequest, Any]] = []
+    failures: list[ImportFailure] = []
+    for request, price, error in results:
+        if error is not None or price is None:
+            failures.append(ImportFailure(request.name, str(error or "card not found")))
+        else:
+            resolved.append((request, price))
+    if len(results) != len(requests):
+        raise RuntimeError(
+            "Moxfield sync did not resolve every card; no collection changes were made"
+        )
+    if failures:
+        details = "; ".join(
+            f"{failure.name}: {failure.error}" for failure in failures[:5]
+        )
+        raise RuntimeError(
+            f"Moxfield sync could not resolve all cards; no collection changes were made ({details})"
+        )
+    return store.apply_moxfield_sync(resolved)

@@ -6,9 +6,9 @@ shows the price history in the browser or terminal.
 
 ## Features
 
-- Import card lists from text, CSV, single card entries, and Moxfield deck links.
-- Store price snapshots in Postgres.
-- View, search, sort, page through, select, and delete cards in the browser.
+- Import card lists from text, CSV, single card entries, and Moxfield collection CSV exports.
+- Store price snapshots in Postgres, including history for archived cards.
+- View, search, sort, page through, select, and archive cards in the browser.
 - Cache Scryfall artwork in Postgres.
 - Refresh stale prices automatically or manually from the frontend.
 - Run as a Docker Compose stack, standalone container, local web server, or CLI.
@@ -95,7 +95,7 @@ Runtime settings can be overridden in `.env`.
 | `JACE_AUTH_USERNAME` | unset | Enables HTTP Basic Auth when set together with `JACE_AUTH_PASSWORD` |
 | `JACE_AUTH_PASSWORD` | unset | HTTP Basic Auth password |
 | `JACE_MAX_REQUEST_BODY_BYTES` | `1048576` | Maximum JSON request body size |
-| `JACE_MAX_IMPORT_CARDS` | `1000` | Maximum cards per import request |
+| `JACE_MAX_IMPORT_CARDS` | `10000` | Maximum cards per import request |
 | `JACE_MAX_IMPORT_JOBS` | `4` | Maximum queued/running import jobs |
 | `JACE_MAX_IMAGE_BYTES` | `10485760` | Maximum cached Scryfall image size |
 
@@ -115,8 +115,8 @@ Card Name [SET]
 
 Example: [examples/cards.txt](examples/cards.txt)
 
-The frontend also accepts single card entries, Moxfield deck links, and CSV
-files. CSV import columns are matched by header name:
+The frontend also accepts single card entries, Moxfield collection CSV exports,
+and CSV files. CSV import columns are matched by header name:
 
 | CSV header | Required | Stored as | Notes |
 | --- | --- | --- | --- |
@@ -126,6 +126,7 @@ files. CSV import columns are matched by header name:
 | `Collector Number`, `collector_number`, or `Number` | no | `cards.collector_number` | Used together with the set code for exact Scryfall lookup |
 | `Condition` | no | `price_snapshots.condition` | Defaults to `Near Mint`; aliases like `NM`, `LP`, `MP`, `HP`, and `DMG` are normalized |
 | `Language` | no | `price_snapshots.language` | Defaults to `English` |
+| `Finish`, `Foil`, or `Is Foil` | no | `price_snapshots.finish` | Defaults to `Non-Foil`; `Foil` and `Etched` are recognized |
 
 Scryfall metadata is stored in the `cards` table (`scryfall_id`, `name`,
 `set_code`, `collector_number`, `source_url`, and image fields). Tracking data
@@ -135,8 +136,42 @@ is stored in `price_snapshots` (`entry_id`, `tracked_name`, `quantity`,
 ## Using The App
 
 Import cards in the browser, then use the frontend to search, sort, page through,
-select, and delete cards including their price history. Prices can be missing
+select, and remove cards from the active collection. Removing a card archives it;
+its price history and card metadata stay in Postgres. Prices can be missing
 when Scryfall has no price data for a card in the selected currency.
+
+### Moxfield Collection Sync
+
+In the Moxfield import tab, select an exported Moxfield collection CSV. A
+successful first sync makes Moxfield the authoritative collection source. Later
+uploads synchronize the collection: new cards are added, changed quantities and
+attributes receive a new snapshot, and cards absent from the export are archived.
+Archived cards no longer contribute to collection value or automatic price
+refreshes, but their price history remains available in the database.
+
+For safety, a Moxfield sync requires `Edition` and `Collector Number` on every
+row. Jace aborts the whole sync before changing the collection if an export is
+incomplete or any card cannot be resolved through Scryfall.
+
+While Moxfield sync is active, Jace disables manual imports and removals. Use
+`Switch to manual mode` in the UI to manage the active collection in Jace again.
+It does not delete or reactivate archived cards.
+
+### Upgrading To 1.3.0
+
+Jace 1.3.0 performs an additive, idempotent database migration on startup. It
+adds tracking metadata and backfills every existing snapshot entry as an active
+manual entry; it does not delete or rewrite existing cards or price snapshots.
+
+Before deploying a new production image, take a normal Postgres backup:
+
+```bash
+docker compose exec -T db pg_dump -U jace jace > jace-before-v1.3.0.sql
+```
+
+Replace `jace` with your configured `POSTGRES_USER` and `POSTGRES_DB` values if
+they differ. Pin production deployments to a reviewed image tag such as
+`ghcr.io/flexusjan/jace:1.3.0` rather than an unreviewed `latest` tag.
 
 The web server automatically refreshes stale prices about once per hour by
 default. A full refresh can also be started manually with `Update Prices` in the
