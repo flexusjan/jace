@@ -101,6 +101,7 @@ def import_cards(
     currency: str = "eur",
     client: ScryfallClient | None = None,
     progress: ProgressCallback | None = None,
+    capture_portfolio: bool = True,
 ) -> ImportResult:
     log(f"IMPORT STARTED total={len(requests)} currency={currency}")
     scryfall = client or ScryfallClient()
@@ -143,6 +144,8 @@ def import_cards(
             log(
                 f"IMPORT COMPLETED total={result.total} processed={result.processed} imported={result.imported} failed={len(result.failures)}"
             )
+            if result.imported and capture_portfolio:
+                store.capture_portfolio_value()
             return result
 
         if hasattr(scryfall, "fetch_card_prices"):
@@ -177,6 +180,8 @@ def import_cards(
             log(
                 f"IMPORT COMPLETED total={result.total} processed={result.processed} imported={result.imported} failed={len(result.failures)}"
             )
+            if result.imported and capture_portfolio:
+                store.capture_portfolio_value()
             return result
 
         for started, card in enumerate(requests, start=1):
@@ -224,6 +229,8 @@ def import_cards(
         log(
             f"IMPORT COMPLETED total={result.total} processed={result.processed} imported={result.imported} failed={len(result.failures)}"
         )
+        if result.imported and capture_portfolio:
+            store.capture_portfolio_value()
         return result
     except Exception:
         log(

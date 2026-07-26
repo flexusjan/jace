@@ -49,6 +49,14 @@ CREATE TABLE IF NOT EXISTS collection_settings (
     last_sync_at TIMESTAMPTZ
 );
 
+CREATE TABLE IF NOT EXISTS portfolio_value_snapshots (
+    id BIGSERIAL PRIMARY KEY,
+    total_value NUMERIC(14, 2) NOT NULL,
+    currency TEXT NOT NULL,
+    active_entries INTEGER NOT NULL,
+    captured_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_price_snapshots_card_time
 ON price_snapshots(scryfall_id, captured_at);
 
@@ -70,6 +78,9 @@ WHERE source = 'moxfield' AND source_key IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_tracked_entries_active
 ON tracked_entries(active, source);
+
+CREATE INDEX IF NOT EXISTS idx_portfolio_value_snapshots_time
+ON portfolio_value_snapshots(currency, captured_at);
 """
 
 
@@ -392,6 +403,7 @@ class PriceStore:
                     """,
                     (timestamp,),
                 )
+                self._capture_portfolio_value_with_cursor(cursor, timestamp)
             self.connection.commit()
         except Exception:
             self.connection.rollback()
@@ -642,6 +654,7 @@ class PriceStore:
                     (datetime.now(UTC), scryfall_ids),
                 )
                 deleted = cursor.rowcount
+                self._capture_portfolio_value_with_cursor(cursor, datetime.now(UTC))
             self.connection.commit()
             return int(deleted or 0)
         except Exception:
@@ -671,6 +684,7 @@ class PriceStore:
                     """,
                     (datetime.now(UTC), entry_ids),
                 )
+                self._capture_portfolio_value_with_cursor(cursor, datetime.now(UTC))
             self.connection.commit()
             return deleted
         except Exception:
@@ -852,46 +866,10 @@ class PriceStore:
             with self.connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    WITH bounds AS (
-                        SELECT entry_id, MIN(id) AS first_id, MAX(id) AS latest_id
-                        FROM price_snapshots
-                        GROUP BY entry_id
-                    ),
-                    pairs AS (
-                        SELECT
-                            first.captured_at AS first_captured_at,
-                            first.quantity AS first_quantity,
-                            first.currency AS first_currency,
-                            first.price AS first_price,
-                            latest.captured_at AS latest_captured_at,
-                            latest.quantity AS latest_quantity,
-                            latest.currency AS latest_currency,
-                            latest.price AS latest_price
-                    FROM bounds
-                    JOIN price_snapshots first ON first.id = bounds.first_id
-                    JOIN price_snapshots latest ON latest.id = bounds.latest_id
-                    JOIN tracked_entries te ON te.entry_id = latest.entry_id AND te.active
-                    ),
-                    value_points AS (
-                        SELECT
-                            MIN(first_captured_at) AS captured_at,
-                            SUM(first_price * first_quantity) AS total_value,
-                            CASE WHEN COUNT(DISTINCT first_currency) = 1 THEN MIN(first_currency) ELSE NULL END AS currency
-                        FROM pairs
-                        UNION
-                        SELECT
-                            MAX(latest_captured_at) AS captured_at,
-                            SUM(latest_price * latest_quantity) AS total_value,
-                            CASE WHEN COUNT(DISTINCT latest_currency) = 1 THEN MIN(latest_currency) ELSE NULL END AS currency
-                        FROM pairs
-                    )
-                    SELECT
-                        captured_at,
-                        total_value,
-                        currency
-                    FROM value_points
-                    WHERE captured_at IS NOT NULL
-                    ORDER BY value_points.captured_at ASC
+                    SELECT captured_at, total_value, currency
+                    FROM portfolio_value_snapshots
+                    WHERE currency = 'EUR'
+                    ORDER BY captured_at ASC, id ASC
                     """
                 )
                 rows = [
@@ -907,6 +885,49 @@ class PriceStore:
             self.connection.rollback()
             raise
         return rows
+
+    def capture_portfolio_value(self, captured_at: datetime | None = None) -> None:
+        """Persist the current active collection value in EUR.
+
+        Portfolio snapshots are deliberately separate from card-price snapshots: an
+        archived entry remains in its card history but no longer affects future
+        portfolio points.
+        """
+        try:
+            with self.connection.cursor() as cursor:
+                self._capture_portfolio_value_with_cursor(
+                    cursor, captured_at or datetime.now(UTC)
+                )
+            self.connection.commit()
+        except Exception:
+            self.connection.rollback()
+            raise
+
+    def _capture_portfolio_value_with_cursor(
+        self, cursor: Any, captured_at: datetime
+    ) -> None:
+        cursor.execute(
+            """
+            WITH latest AS (
+                SELECT DISTINCT ON (entry_id)
+                    entry_id, quantity, price, currency
+                FROM price_snapshots
+                ORDER BY entry_id, captured_at DESC, id DESC
+            )
+            INSERT INTO portfolio_value_snapshots (
+                total_value, currency, active_entries, captured_at
+            )
+            SELECT
+                COALESCE(SUM(latest.price * latest.quantity), 0),
+                'EUR',
+                COUNT(*),
+                %s
+            FROM latest
+            JOIN tracked_entries te ON te.entry_id = latest.entry_id AND te.active
+            WHERE latest.currency = 'EUR'
+            """,
+            (captured_at,),
+        )
 
     def stale_tracked_cards(self, older_than: datetime) -> list[TrackedCard]:
         with self.connection.cursor() as cursor:

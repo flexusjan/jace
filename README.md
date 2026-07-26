@@ -8,6 +8,7 @@ shows the price history in the browser or terminal.
 
 - Import card lists from text, CSV, single card entries, and Moxfield collection CSV exports.
 - Store price snapshots in Postgres, including history for archived cards.
+- Persist EUR portfolio-value snapshots and inspect their chart from Total value.
 - View, search, sort, page through, select, and archive cards in the browser.
 - Cache Scryfall artwork in Postgres.
 - Refresh stale prices automatically or manually from the frontend.
@@ -139,6 +140,15 @@ Import cards in the browser, then use the frontend to search, sort, page through
 select, and remove cards from the active collection. Removing a card archives it;
 its price history and card metadata stay in Postgres. Prices can be missing
 when Scryfall has no price data for a card in the selected currency.
+
+### Portfolio Value History
+
+Click `Total value` to open the EUR portfolio chart. Jace persists a portfolio
+snapshot after a successful price refresh, import, Moxfield synchronization, or
+manual archival. Portfolio snapshots are separate from individual card prices:
+archived cards retain their full price history while they stop contributing to
+new portfolio values. The first chart point is recorded after the next such
+operation following an upgrade.
 
 ### Moxfield Collection Sync
 

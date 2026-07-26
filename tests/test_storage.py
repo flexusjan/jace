@@ -217,7 +217,7 @@ class StorageTest(unittest.TestCase):
         deleted = store.delete_cards(["card-1", "card-2"])
 
         statements = connection.cursor_instance.statements
-        statement, parameters = statements[-1]
+        statement, parameters = statements[-2]
         self.assertIn("UPDATE tracked_entries", statement)
         self.assertIn("price_snapshots", statement)
         self.assertEqual(parameters[1], ["card-1", "card-2"])
@@ -318,14 +318,22 @@ class StorageTest(unittest.TestCase):
         history = store.value_history_rows()
 
         statement = connection.cursor_instance.statements[-1][0]
-        self.assertIn("WITH bounds AS", statement)
-        self.assertIn("MIN(id) AS first_id", statement)
-        self.assertIn("MAX(id) AS latest_id", statement)
-        self.assertIn("value_points", statement)
-        self.assertIn("SUM(first_price * first_quantity)", statement)
-        self.assertIn("SUM(latest_price * latest_quantity)", statement)
+        self.assertIn("FROM portfolio_value_snapshots", statement)
+        self.assertIn("currency = 'EUR'", statement)
         self.assertEqual(history[0].total_value, Decimal("4.50"))
         self.assertEqual(history[0].currency, "EUR")
+
+    def test_capture_portfolio_value_records_active_eur_collection(self):
+        connection = FakeConnection()
+        store = PriceStore(connection=connection)
+
+        store.capture_portfolio_value(datetime(2026, 7, 26, tzinfo=UTC))
+
+        statement, parameters = connection.cursor_instance.statements[-1]
+        self.assertIn("INSERT INTO portfolio_value_snapshots", statement)
+        self.assertIn("latest.currency = 'EUR'", statement)
+        self.assertIn("te.active", statement)
+        self.assertEqual(parameters, (datetime(2026, 7, 26, tzinfo=UTC),))
 
     def test_latest_page_applies_limit_search_sort_and_summary(self):
         captured_at = datetime(2026, 2, 1, tzinfo=UTC)
@@ -396,9 +404,9 @@ class StorageTest(unittest.TestCase):
         deleted = store.delete_tracked_cards(["entry-1"])
 
         statements = connection.cursor_instance.statements
-        self.assertIn("COUNT(DISTINCT", statements[-2][0])
-        self.assertIn("UPDATE tracked_entries", statements[-1][0])
-        self.assertEqual(statements[-1][1][1], ["entry-1"])
+        self.assertIn("COUNT(DISTINCT", statements[-3][0])
+        self.assertIn("UPDATE tracked_entries", statements[-2][0])
+        self.assertEqual(statements[-2][1][1], ["entry-1"])
         self.assertEqual(deleted, 1)
         self.assertEqual(connection.commits, 2)
 

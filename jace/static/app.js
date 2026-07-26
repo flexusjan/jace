@@ -102,6 +102,10 @@ const refreshProgressBar = document.querySelector("#refresh-progress-bar");
 const cardCount = document.querySelector("#card-count");
 const portfolioValue = document.querySelector("#portfolio-value");
 const portfolioChange = document.querySelector("#portfolio-change");
+const portfolioOpen = document.querySelector("#portfolio-open");
+const portfolioDialog = document.querySelector("#portfolio-dialog");
+const portfolioClose = document.querySelector("#portfolio-close");
+const portfolioHistoryContent = document.querySelector("#portfolio-history-content");
 const importForm = document.querySelector("#import-form");
 const importSubmit = document.querySelector("#import-submit");
 const importStatus = document.querySelector("#import-status");
@@ -139,6 +143,13 @@ let searchTimer = null;
 
 initializeColumns();
 priceRefresh.addEventListener("click", refreshPricesNow);
+portfolioOpen.addEventListener("click", openPortfolioHistory);
+portfolioClose.addEventListener("click", closePortfolioHistory);
+portfolioDialog.addEventListener("click", event => {
+  if (event.target === portfolioDialog) {
+    closePortfolioHistory();
+  }
+});
 search.addEventListener("input", event => {
   state.query = event.target.value.toLowerCase();
   state.page = 1;
@@ -188,8 +199,12 @@ pageNext.addEventListener("click", () => {
 detailClose.addEventListener("click", closeDetail);
 detailBackdrop.addEventListener("click", closeDetail);
 document.addEventListener("keydown", event => {
-  if (event.key === "Escape" && state.detailOpen) {
-    closeDetail();
+  if (event.key === "Escape") {
+    if (!portfolioDialog.classList.contains("hidden")) {
+      closePortfolioHistory();
+    } else if (state.detailOpen) {
+      closeDetail();
+    }
   }
 });
 mobileDetailQuery.addEventListener("change", updateDetailMode);
@@ -308,6 +323,9 @@ async function loadValueHistory() {
     state.valueHistoryError = error.message;
   }
   renderPortfolioChange();
+  if (!portfolioDialog.classList.contains("hidden")) {
+    renderPortfolioHistory();
+  }
 }
 
 async function loadRefreshStatus() {
@@ -1054,6 +1072,52 @@ function renderPortfolioChange() {
   const change = Number(latest.total_value) - Number(first.total_value);
   portfolioChange.textContent = `(${signedMoney(change, latest.currency)})`;
   portfolioChange.className = `metric-change ${changeClass({ change })}`;
+}
+
+function openPortfolioHistory() {
+  renderPortfolioHistory();
+  portfolioDialog.classList.remove("hidden");
+  document.body.classList.add("modal-open");
+  portfolioClose.focus({ preventScroll: true });
+}
+
+function closePortfolioHistory() {
+  portfolioDialog.classList.add("hidden");
+  document.body.classList.toggle("modal-open", isMobileDetail() && state.detailOpen);
+  portfolioOpen.focus({ preventScroll: true });
+}
+
+function renderPortfolioHistory() {
+  if (state.valueHistoryError) {
+    portfolioHistoryContent.innerHTML = `<p class="muted">Could not load portfolio history: ${escapeHtml(state.valueHistoryError)}</p>`;
+    return;
+  }
+  const points = (state.valueHistory || []).filter(point => point.total_value !== null && point.currency === "EUR");
+  if (points.length === 0) {
+    portfolioHistoryContent.innerHTML = `<p class="muted">The first EUR portfolio snapshot will be saved after the next price update or collection change.</p>`;
+    return;
+  }
+  const values = points.map(point => ({ ...point, price: point.total_value }));
+  portfolioHistoryContent.innerHTML = `
+    ${portfolioChartSummary(values)}
+    ${lineChartSvg(values, "EUR", "Portfolio value history", 960)}
+    <p class="muted">${points.length} saved portfolio ${points.length === 1 ? "snapshot" : "snapshots"} · EUR</p>
+  `;
+}
+
+function portfolioChartSummary(points) {
+  const values = points.map(point => Number(point.price));
+  const first = points[0];
+  const latest = points[points.length - 1];
+  const change = Number(latest.price) - Number(first.price);
+  return `
+    <div class="chart-summary portfolio-chart-summary">
+      <div><span>Current</span><strong>${money(latest.price, "EUR")}</strong></div>
+      <div><span>Change</span><strong class="${changeClass({ change })}">${signedMoney(change, "EUR")}</strong></div>
+      <div><span>Low</span><strong>${money(Math.min(...values), "EUR")}</strong></div>
+      <div><span>High</span><strong>${money(Math.max(...values), "EUR")}</strong></div>
+    </div>
+  `;
 }
 
 function cardImage(card) {

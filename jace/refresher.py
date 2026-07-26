@@ -239,6 +239,7 @@ def refresh_cards(
                     log_import_progress(update),
                     import_progress(update),
                 ),
+                capture_portfolio=False,
             )
             refreshed += result.imported
             processed += result.processed
@@ -281,6 +282,8 @@ def refresh_cards(
                 failed=failed,
             )
 
+    if refreshed:
+        store.capture_portfolio_value()
     return refreshed
 
 

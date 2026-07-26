@@ -147,6 +147,20 @@ h2 {
   box-shadow: var(--shadow);
 }
 
+.metric-button {
+  height: auto;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.metric-button:hover,
+.metric-button:focus-visible {
+  border-color: var(--accent);
+  outline: 3px solid var(--focus);
+}
+
 .metric-label {
   color: var(--muted);
   font-size: 0.72rem;
@@ -249,6 +263,33 @@ button:disabled {
 .import-panel,
 .data-toolbar {
   padding: 12px;
+}
+
+.collection-source {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--panel-tint);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.collection-source strong {
+  padding-bottom: 9px;
+  color: var(--accent-strong);
+  white-space: nowrap;
+}
+
+.collection-source .import-form {
+  grid-template-columns: minmax(220px, 1fr) auto auto;
+}
+
+.collection-source .import-status {
+  margin: 0;
+  padding-bottom: 8px;
+  white-space: nowrap;
 }
 
 .import-tabs {
@@ -499,6 +540,44 @@ button.tab:hover {
   inset: 0;
   z-index: 19;
   background: rgb(0 0 0 / 58%);
+}
+
+.portfolio-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(0 0 0 / 58%);
+}
+
+.portfolio-dialog-panel {
+  position: relative;
+  width: min(100%, 980px);
+  max-height: min(760px, calc(100dvh - 48px));
+  overflow: auto;
+  padding: 22px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.portfolio-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: grid;
+}
+
+.portfolio-dialog-panel h2 {
+  margin-right: 42px;
+}
+
+.portfolio-chart-summary {
+  grid-template-columns: repeat(4, 1fr);
+  margin-bottom: 14px;
 }
 
 .detail-close {
@@ -903,6 +982,33 @@ tbody tr.selected {
   .import-panel,
   .data-toolbar {
     padding: 10px;
+  }
+
+  .collection-source {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .collection-source strong,
+  .collection-source .import-status {
+    padding-bottom: 0;
+  }
+
+  .collection-source .import-form {
+    grid-template-columns: 1fr;
+  }
+
+  .portfolio-dialog {
+    padding: 10px;
+  }
+
+  .portfolio-dialog-panel {
+    max-height: calc(100dvh - 20px);
+    padding: 16px;
+  }
+
+  .portfolio-chart-summary {
+    grid-template-columns: 1fr 1fr;
   }
 
   .import-form {

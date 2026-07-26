@@ -19,10 +19,10 @@
             <span class="metric-label">Cards</span>
             <strong id="card-count">0 cards</strong>
           </div>
-          <div class="metric">
+          <button class="metric metric-button" id="portfolio-open" type="button" aria-haspopup="dialog">
             <span class="metric-label">Total value</span>
             <strong><span id="portfolio-value">0.00</span> <span id="portfolio-change" class="metric-change"></span></strong>
-          </div>
+          </button>
         </div>
       </header>
 
@@ -68,13 +68,11 @@
         <div id="import-results" class="import-results"></div>
       </section>
 
-      <section class="import-panel hidden" id="moxfield-sync-panel" aria-label="Moxfield synchronization">
-        <p class="eyebrow">Collection source</p>
-        <h2>Moxfield sync is active</h2>
-        <p>Export your Moxfield collection as CSV, then synchronize it here. Cards missing from the export are archived; their price history remains stored.</p>
+      <section class="collection-source hidden" id="moxfield-sync-panel" aria-label="Moxfield synchronization">
+        <strong>Moxfield sync active</strong>
         <form id="moxfield-sync-form" class="import-form">
           <label>
-            <span>Moxfield collection CSV</span>
+            <span>New collection CSV</span>
             <input id="moxfield-sync-file" type="file" accept=".csv,text/csv" required>
           </label>
           <button id="moxfield-sync-submit" type="submit">Sync collection</button>
@@ -193,6 +191,13 @@
       </section>
     </main>
     <div class="detail-backdrop hidden" id="detail-backdrop" aria-hidden="true"></div>
+    <div class="portfolio-dialog hidden" id="portfolio-dialog" role="dialog" aria-modal="true" aria-labelledby="portfolio-dialog-title">
+      <div class="portfolio-dialog-panel">
+        <button class="detail-close portfolio-close" id="portfolio-close" type="button" aria-label="Close portfolio history">&times;</button>
+        <h2 id="portfolio-dialog-title">Portfolio value</h2>
+        <div id="portfolio-history-content"></div>
+      </div>
+    </div>
     <script src="/app.js"></script>
   </body>
 </html>

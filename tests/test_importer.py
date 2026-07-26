@@ -87,6 +87,9 @@ class FakeStore:
     def save_snapshot(self, request, price):
         self.snapshots.append((request, price))
 
+    def capture_portfolio_value(self):
+        pass
+
 
 class FakeSyncStore(FakeStore):
     def __init__(self):

@@ -32,6 +32,9 @@ class FakeRefreshStore:
     def save_snapshot(self, request, price, entry_id=None):
         self.saved.append((request, price, entry_id))
 
+    def capture_portfolio_value(self):
+        pass
+
     def close(self):
         self.closed = True
 
