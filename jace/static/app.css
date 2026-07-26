@@ -552,6 +552,10 @@ button.tab:hover {
   background: rgb(0 0 0 / 58%);
 }
 
+.portfolio-dialog.hidden {
+  display: none;
+}
+
 .portfolio-dialog-panel {
   position: relative;
   width: min(100%, 980px);
