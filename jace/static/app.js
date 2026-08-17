@@ -237,7 +237,13 @@ setInterval(loadRefreshStatus, 30000);
 resumeActiveImport();
 
 async function loadInitialData() {
-  await loadCollectionMode();
+  try {
+    await loadCollectionMode();
+  } catch (error) {
+    // The collection remains readable if the optional mode indicator is
+    // temporarily unavailable. Server-side mutation checks still apply.
+    console.error("Could not load collection mode", error);
+  }
   await loadCards();
   deferValueHistoryLoad();
 }

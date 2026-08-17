@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.4 - 2026-08-17
+
+- Restore collection loading after Postgres restarts by using a fresh database connection for collection-mode and collection mutations.
+- Continue loading cards in the browser if the non-essential collection-mode status is temporarily unavailable.
+- Fingerprint static frontend assets so deployments cannot reuse stale cached JavaScript or CSS.
+
+## 1.3.0 - 2026-07-26
+
 - Make Moxfield synchronization exclusive with other mutating imports to prevent concurrent collection changes.
 - Require exact Moxfield printing identifiers before a sync can alter the collection.
 - Correct Moxfield archive reporting, handle UTF-8 CSV byte-order marks, and remove unused rate-limit code.

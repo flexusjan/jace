@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import binascii
 import errno
+import hashlib
 import hmac
 import json
 import threading
@@ -18,7 +19,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, unquote, urlparse
 from urllib.request import Request, urlopen
 
-from . import APP_USER_AGENT, __version__
+from . import APP_USER_AGENT
 from .config import SUPPORTED_CURRENCIES, app_config
 from .importer import (
     ImportResult,
@@ -191,7 +192,7 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
             self._send_json(self.refresher.status())
             return
         if path == "/api/collection-mode":
-            self._send_json(collection_mode_payload(self.store.collection_mode()))
+            self._send_json(collection_mode_payload(self._request_collection_mode()))
             return
         if path.startswith("/api/import-jobs/"):
             self._send_json(self.jobs.payload(path.removeprefix("/api/import-jobs/")))
@@ -244,7 +245,7 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
 
     def _handle_import(self) -> None:
         try:
-            if self.store.collection_mode().mode == "moxfield":
+            if self._request_collection_mode().mode == "moxfield":
                 raise ValueError(
                     "Manual imports are disabled while Moxfield sync is active"
                 )
@@ -331,9 +332,13 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
                 raise ValueError(
                     "Moxfield mode is enabled by a successful Moxfield CSV sync"
                 )
-            self._send_json(
-                collection_mode_payload(self.store.set_collection_mode(mode))
-            )
+            store = self._request_store()
+            try:
+                self._send_json(
+                    collection_mode_payload(store.set_collection_mode(mode))
+                )
+            finally:
+                self._close_request_store(store)
         except json.JSONDecodeError as exc:
             self._send_json(
                 {"error": f"Invalid JSON: {exc.msg}"}, HTTPStatus.BAD_REQUEST
@@ -413,8 +418,9 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
         )
 
     def _handle_delete_cards(self) -> None:
+        store = self._request_store()
         try:
-            if self.store.collection_mode().mode == "moxfield":
+            if store.collection_mode().mode == "moxfield":
                 self._send_json(
                     {"error": "Remove cards in Moxfield while Moxfield sync is active"},
                     HTTPStatus.CONFLICT,
@@ -436,9 +442,9 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
                         {"error": "No cards selected"}, HTTPStatus.BAD_REQUEST
                     )
                     return
-                deleted = self.store.delete_tracked_cards(tracking_ids)
+                deleted = store.delete_tracked_cards(tracking_ids)
                 log(
-                    f"CARDS ARCHIVED tracking_ids requested={len(tracking_ids)} archived={deleted} {collection_stats_log(self.store)}"
+                    f"CARDS ARCHIVED tracking_ids requested={len(tracking_ids)} archived={deleted} {collection_stats_log(store)}"
                 )
                 self._send_json({"archived": deleted})
                 return
@@ -455,9 +461,9 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
             if not scryfall_ids:
                 self._send_json({"error": "No cards selected"}, HTTPStatus.BAD_REQUEST)
                 return
-            deleted = self.store.delete_cards(scryfall_ids)
+            deleted = store.delete_cards(scryfall_ids)
             log(
-                f"CARDS ARCHIVED scryfall_ids requested={len(scryfall_ids)} archived={deleted} {collection_stats_log(self.store)}"
+                f"CARDS ARCHIVED scryfall_ids requested={len(scryfall_ids)} archived={deleted} {collection_stats_log(store)}"
             )
         except json.JSONDecodeError as exc:
             self._send_json(
@@ -470,6 +476,8 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
         except ValueError as exc:
             self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
             return
+        finally:
+            self._close_request_store(store)
 
         self._send_json({"archived": deleted})
 
@@ -541,6 +549,13 @@ class PriceTrackerHandler(BaseHTTPRequestHandler):
             return PriceStore(self.store.database_url, initialize_schema=False)
         return self.store
 
+    def _request_collection_mode(self) -> CollectionMode:
+        store = self._request_store()
+        try:
+            return store.collection_mode()
+        finally:
+            self._close_request_store(store)
+
     def _close_request_store(self, store: PriceStore) -> None:
         if store is not self.store:
             store.close()
@@ -603,9 +618,16 @@ def rendered_index_html(dark_theme: bool) -> str:
         (STATIC_DIR / "index.html")
         .read_text(encoding="utf-8")
         .replace('data-theme="dark"', f'data-theme="{theme}"')
-        .replace('href="/app.css"', f'href="/app.css?v={__version__}"')
-        .replace('src="/app.js"', f'src="/app.js?v={__version__}"')
+        .replace(
+            'href="/app.css"', f'href="/app.css?v={static_asset_version("app.css")}"'
+        )
+        .replace('src="/app.js"', f'src="/app.js?v={static_asset_version("app.js")}"')
     )
+
+
+def static_asset_version(filename: str) -> str:
+    """Return a content fingerprint so deployments never reuse stale assets."""
+    return hashlib.sha256((STATIC_DIR / filename).read_bytes()).hexdigest()[:12]
 
 
 def cards_payload(

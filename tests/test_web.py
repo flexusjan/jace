@@ -2,7 +2,7 @@ import unittest
 from base64 import b64encode
 from datetime import UTC, datetime
 from decimal import Decimal
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from jace.importer import ImportFailure, ImportResult
 from jace.models import CardRequest
@@ -229,8 +229,9 @@ class WebPayloadTest(unittest.TestCase):
     def test_rendered_index_html_uses_configured_theme(self):
         self.assertIn('data-theme="dark"', rendered_index_html(True))
         self.assertIn('data-theme="light"', rendered_index_html(False))
-        self.assertIn('href="/app.css?v=', rendered_index_html(True))
-        self.assertIn('src="/app.js?v=', rendered_index_html(True))
+        html = rendered_index_html(True)
+        self.assertRegex(html, r'href="/app\.css\?v=[0-9a-f]{12}"')
+        self.assertRegex(html, r'src="/app\.js\?v=[0-9a-f]{12}"')
 
     def test_cards_payload_keys_history_by_scryfall_id(self):
         rows = [
@@ -397,6 +398,24 @@ class WebPayloadTest(unittest.TestCase):
         handler.end_headers = lambda: None
 
         handler._send_json({"ok": True})
+
+    @patch("jace.web.PriceStore")
+    def test_collection_mode_uses_a_fresh_request_store(self, price_store):
+        shared_store = MagicMock(database_url="postgresql://jace")
+        fresh_store = MagicMock()
+        fresh_store.collection_mode.return_value = CollectionMode("moxfield", None)
+        price_store.return_value = fresh_store
+        handler = PriceTrackerHandler.__new__(PriceTrackerHandler)
+        handler.store = shared_store
+
+        mode = handler._request_collection_mode()
+
+        self.assertEqual(mode.mode, "moxfield")
+        shared_store.collection_mode.assert_not_called()
+        price_store.assert_called_once_with(
+            "postgresql://jace", initialize_schema=False
+        )
+        fresh_store.close.assert_called_once()
 
     @patch.dict("os.environ", {"JACE_MAX_IMPORT_JOBS": "1"}, clear=False)
     def test_import_jobs_rejects_when_active_limit_is_reached(self):
