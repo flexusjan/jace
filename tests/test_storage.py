@@ -174,10 +174,13 @@ class StorageTest(unittest.TestCase):
         )
         self.assertTrue(
             any(
-                "INSERT INTO portfolio_value_snapshots" in statement
-                and "initial_value" in statement
+                "INSERT INTO portfolio_entry_performance" in statement
+                and "WHERE EXISTS (SELECT 1 FROM initialized)" in statement
                 for statement in statements
             )
+        )
+        self.assertFalse(
+            any("INSERT INTO portfolio_value_snapshots" in s for s in statements)
         )
 
     def test_row_to_report_converts_decimal_values(self):
@@ -317,6 +320,8 @@ class StorageTest(unittest.TestCase):
                     "captured_at": datetime(2026, 2, 1, tzinfo=UTC),
                     "total_value": "4.50",
                     "currency": "EUR",
+                    "price_change": "1.25",
+                    "performance_started_at": datetime(2026, 1, 1, tzinfo=UTC),
                 }
             ]
         )
@@ -329,6 +334,10 @@ class StorageTest(unittest.TestCase):
         self.assertIn("currency = 'EUR'", statement)
         self.assertEqual(history[0].total_value, Decimal("4.50"))
         self.assertEqual(history[0].currency, "EUR")
+        self.assertEqual(history[0].price_change, Decimal("1.25"))
+        self.assertEqual(
+            history[0].performance_started_at, datetime(2026, 1, 1, tzinfo=UTC)
+        )
 
     def test_capture_portfolio_value_records_active_eur_collection(self):
         connection = FakeConnection()

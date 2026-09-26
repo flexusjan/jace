@@ -940,7 +940,7 @@ function renderDetail(card) {
       </div>
     </div>
     <section class="history-chart" aria-label="Price history">
-      <h3>Price history</h3>
+      <h3>Price history per copy</h3>
       ${historyStatus(history, points, card.currency, error)}
       ${historyPaginationStatus(history, pagination)}
     </section>
@@ -1055,6 +1055,7 @@ function renderPortfolioChange() {
   if (!portfolioChange) {
     return;
   }
+  portfolioChange.title = "Price gain excludes cards added or removed.";
   if (state.valueHistoryError) {
     portfolioChange.textContent = "";
     portfolioChange.className = "metric-change";
@@ -1073,10 +1074,15 @@ function renderPortfolioChange() {
     return;
   }
 
-  const first = points[0];
   const latest = points[points.length - 1];
-  const change = Number(latest.total_value) - Number(first.total_value);
-  portfolioChange.textContent = `(${signedMoney(change, latest.currency)})`;
+  if (latest.price_change === null || latest.price_change === undefined) {
+    portfolioChange.textContent = "";
+    portfolioChange.className = "metric-change";
+    return;
+  }
+  const change = Number(latest.price_change);
+  portfolioChange.textContent = `(${signedMoney(change, latest.currency)} price gain)`;
+  portfolioChange.title = performanceNote(latest);
   portfolioChange.className = `metric-change ${changeClass({ change })}`;
 }
 
@@ -1107,23 +1113,30 @@ function renderPortfolioHistory() {
   portfolioHistoryContent.innerHTML = `
     ${portfolioChartSummary(values)}
     ${lineChartSvg(values, "EUR", "Portfolio value history", 960)}
+    <p class="muted">${escapeHtml(performanceNote(points[points.length - 1]))} The value chart includes cards added or removed.</p>
     <p class="muted">${points.length} saved portfolio ${points.length === 1 ? "snapshot" : "snapshots"} · EUR</p>
   `;
 }
 
 function portfolioChartSummary(points) {
   const values = points.map(point => Number(point.price));
-  const first = points[0];
   const latest = points[points.length - 1];
-  const change = Number(latest.price) - Number(first.price);
+  const change = latest.price_change;
   return `
     <div class="chart-summary portfolio-chart-summary">
       <div><span>Current</span><strong>${money(latest.price, "EUR")}</strong></div>
-      <div><span>Change</span><strong class="${changeClass({ change })}">${signedMoney(change, "EUR")}</strong></div>
+      <div><span>Price gain</span><strong class="${changeClass({ change })}">${signedMoney(change, "EUR")}</strong></div>
       <div><span>Low</span><strong>${money(Math.min(...values), "EUR")}</strong></div>
       <div><span>High</span><strong>${money(Math.max(...values), "EUR")}</strong></div>
     </div>
   `;
+}
+
+function performanceNote(point) {
+  if (!point.performance_started_at) {
+    return "Price gain will be available after the next price update or collection change.";
+  }
+  return `Price gain since ${formatDate(point.performance_started_at)}, excluding cards added or removed. Earlier price gain and unpriced quantity changes are excluded.`;
 }
 
 function cardImage(card) {
@@ -1161,7 +1174,7 @@ function columnLabel(key) {
     finish: "Finish",
     latest_price: "Latest",
     total_price: "Total",
-    change: "Change",
+    change: "Price change per copy",
     latest_captured_at: "Captured"
   };
   return labels[key] || key;

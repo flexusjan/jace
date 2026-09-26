@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.5 - 2026-09-27
+
+- Separate EUR price gains from collection additions and removals, accounting for the quantity held before each price change.
+- Preserve existing collection data and histories through an additive migration; corrected gains start from the holdings at upgrade, without inventing historical acquisition or archival events.
+- Retain earned price movements across archival and restart; restart the price basis when an archived card returns.
+- Label individual card price changes per copy and expose the corrected gain and start date in the API and portfolio dialog.
+- Add PostgreSQL migration and lifecycle regression tests plus frontend checks to CI.
+
 ## 1.3.4 - 2026-08-17
 
 - Restore collection loading after Postgres restarts by using a fresh database connection for collection-mode and collection mutations.

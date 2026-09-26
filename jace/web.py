@@ -764,6 +764,12 @@ def value_history_payload(history: list[ValueHistoryPoint]) -> dict[str, Any]:
                 "captured_at": point.captured_at.isoformat(timespec="seconds"),
                 "total_value": decimal_to_string(point.total_value),
                 "currency": point.currency,
+                "price_change": decimal_to_string(point.price_change),
+                "performance_started_at": (
+                    point.performance_started_at.isoformat(timespec="seconds")
+                    if point.performance_started_at
+                    else None
+                ),
             }
             for point in history
         ]
@@ -773,22 +779,19 @@ def value_history_payload(history: list[ValueHistoryPoint]) -> dict[str, Any]:
 def summary_payload(
     report: ReportPage, value_history: list[ValueHistoryPoint]
 ) -> dict[str, Any]:
-    first = value_history[0] if value_history else None
     latest = value_history[-1] if value_history else None
     currency = report.currency or (latest.currency if latest else None)
-    change = None
-    if (
-        first
-        and latest
-        and first.total_value is not None
-        and latest.total_value is not None
-    ):
-        change = latest.total_value - first.total_value
+    change = latest.price_change if latest and latest.currency == "EUR" else None
 
     return {
         "cards": report.total_count,
         "total_value": money_string(report.total_value, currency),
-        "change": signed_money_string(change, currency),
+        "change": signed_money_string(change, "EUR"),
+        "change_since": (
+            latest.performance_started_at.isoformat(timespec="seconds")
+            if latest and latest.performance_started_at
+            else None
+        ),
         "currency": currency,
     }
 

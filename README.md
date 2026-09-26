@@ -150,6 +150,35 @@ archived cards retain their full price history while they stop contributing to
 new portfolio values. The first chart point is recorded after the next such
 operation following an upgrade.
 
+`Price gain` tracks EUR market-price movements on the quantity held before each
+price observation. Adding or removing copies changes the collection's total value
+without counting their value as a gain or loss. For example, one copy tracked at
+EUR 10 followed by two copies at EUR 15 gives EUR 30 total value and EUR 5 price
+gain. Subsequent price movements apply to both copies. Price movement already
+recorded while holding removed cards stays in the cumulative figure; reactivated
+cards start again at their new observed price. This measures market movements,
+not profit based on purchase or sale prices.
+
+On upgrade, an additive migration establishes this calculation from the current
+holdings and their latest recorded prices. Existing cards, quantities, archives,
+and historical snapshots are preserved. The new figure starts at that migration's
+timestamp, shown in the portfolio dialog; older gains are unavailable because
+earlier archive/reactivation events were not fully recorded. Restarting Jace does
+not reset this baseline. Old portfolio points retain their total values and have
+no calculated price gain. Startup no longer synthesizes a historical portfolio
+point by combining cards first acquired on different dates.
+
+A missing price keeps the last known basis when the quantity and currency are
+unchanged. If quantity changes without a price, that interval is excluded from
+price gain and a new basis starts with the next available quote. Non-EUR prices
+are excluded from EUR performance. The card table and individual card chart
+continue to show market prices and price changes **per copy**.
+
+The value-history API includes nullable `price_change` and
+`performance_started_at` fields. `/api/summary` returns the corrected EUR price
+gain in `change` and its starting timestamp in `change_since`; it returns `null`
+for legacy history without this calculation.
+
 ### Moxfield Collection Sync
 
 In the Moxfield import tab, select an exported Moxfield collection CSV. A
@@ -246,7 +275,12 @@ jace web --host 127.0.0.1 --port 8180
 
 ```bash
 python -m unittest discover -s tests
+node --test tests/test_portfolio_frontend.cjs
 ```
+
+Database integration tests use `JACE_TEST_DATABASE_URL` pointing to a dedicated
+test Postgres database. Each test creates and removes its own temporary schema;
+the tests are skipped when that variable is unset. CI runs them against Postgres.
 
 ## Dependency Updates
 

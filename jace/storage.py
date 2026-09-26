@@ -57,6 +57,19 @@ CREATE TABLE IF NOT EXISTS portfolio_value_snapshots (
     captured_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS portfolio_performance_settings (
+    id SMALLINT PRIMARY KEY CHECK (id = 1),
+    started_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS portfolio_entry_performance (
+    entry_id TEXT PRIMARY KEY REFERENCES tracked_entries(entry_id),
+    quantity INTEGER NOT NULL,
+    currency TEXT NOT NULL,
+    price NUMERIC(12, 2),
+    price_change NUMERIC(14, 2) NOT NULL DEFAULT 0
+);
+
 CREATE INDEX IF NOT EXISTS idx_price_snapshots_card_time
 ON price_snapshots(scryfall_id, captured_at);
 
@@ -124,6 +137,8 @@ class ValueHistoryPoint:
     captured_at: datetime
     total_value: Decimal | None
     currency: str | None
+    price_change: Decimal | None = None
+    performance_started_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -244,6 +259,9 @@ class PriceStore:
                         price.price,
                         timestamp,
                     ),
+                )
+                self._record_price_change_with_cursor(
+                    cursor, snapshot_entry_id, request.quantity, price
                 )
             self.connection.commit()
         except Exception:
@@ -457,6 +475,39 @@ class PriceStore:
                 price.price,
                 timestamp,
             ),
+        )
+        self._record_price_change_with_cursor(cursor, entry_id, request.quantity, price)
+
+    def _record_price_change_with_cursor(
+        self, cursor: Any, entry_id: str, quantity: int, price: CardPrice
+    ) -> None:
+        # Revalue only the copies held before this observation. Copies added at
+        # the new price start contributing to subsequent price movements.
+        # Keep cumulative movement after removal; it is not a sale-profit figure.
+        cursor.execute(
+            """
+            INSERT INTO portfolio_entry_performance AS previous
+                (entry_id, quantity, currency, price)
+            SELECT %s, CASE WHEN active THEN %s ELSE 0 END, %s, %s
+            FROM tracked_entries WHERE entry_id = %s
+            ON CONFLICT (entry_id) DO UPDATE SET
+                price_change = previous.price_change + CASE
+                    WHEN previous.currency = 'EUR' AND excluded.currency = 'EUR'
+                      AND previous.price IS NOT NULL AND excluded.price IS NOT NULL
+                    THEN previous.quantity * (excluded.price - previous.price)
+                    ELSE 0
+                END,
+                quantity = excluded.quantity,
+                currency = excluded.currency,
+                price = CASE
+                    WHEN excluded.price IS NULL
+                      AND previous.quantity = excluded.quantity
+                      AND previous.currency = excluded.currency
+                    THEN previous.price
+                    ELSE excluded.price
+                END
+            """,
+            (entry_id, quantity, price.currency, price.price, entry_id),
         )
 
     def latest_rows(
@@ -866,7 +917,8 @@ class PriceStore:
             with self.connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT captured_at, total_value, currency
+                    SELECT captured_at, total_value, currency,
+                           price_change, performance_started_at
                     FROM portfolio_value_snapshots
                     WHERE currency = 'EUR'
                     ORDER BY captured_at ASC, id ASC
@@ -877,6 +929,8 @@ class PriceStore:
                         captured_at=values["captured_at"],
                         total_value=decimal_or_none(values["total_value"]),
                         currency=values["currency"],
+                        price_change=decimal_or_none(values.get("price_change")),
+                        performance_started_at=values.get("performance_started_at"),
                     )
                     for values in (dict(row) for row in cursor.fetchall())
                 ]
@@ -913,15 +967,24 @@ class PriceStore:
                     entry_id, quantity, price, currency
                 FROM price_snapshots
                 ORDER BY entry_id, captured_at DESC, id DESC
+            ), archived AS (
+                UPDATE portfolio_entry_performance performance
+                SET quantity = 0
+                FROM tracked_entries te
+                WHERE te.entry_id = performance.entry_id AND NOT te.active
+                  AND performance.quantity <> 0
             )
             INSERT INTO portfolio_value_snapshots (
-                total_value, currency, active_entries, captured_at
+                total_value, currency, active_entries, captured_at,
+                price_change, performance_started_at
             )
             SELECT
                 COALESCE(SUM(latest.price * latest.quantity), 0),
                 'EUR',
                 COUNT(*),
-                %s
+                %s,
+                (SELECT COALESCE(SUM(price_change), 0) FROM portfolio_entry_performance),
+                (SELECT started_at FROM portfolio_performance_settings WHERE id = 1)
             FROM latest
             JOIN tracked_entries te ON te.entry_id = latest.entry_id AND te.active
             WHERE latest.currency = 'EUR'
@@ -1050,43 +1113,40 @@ class PriceStore:
                     "CREATE INDEX IF NOT EXISTS idx_price_snapshots_entry_id ON price_snapshots(entry_id, id)"
                 )
                 cursor.execute(
+                    "ALTER TABLE portfolio_value_snapshots ADD COLUMN IF NOT EXISTS price_change NUMERIC(14, 2)"
+                )
+                cursor.execute(
+                    "ALTER TABLE portfolio_value_snapshots ADD COLUMN IF NOT EXISTS performance_started_at TIMESTAMPTZ"
+                )
+                # Old snapshots do not contain a complete archive/reactivation
+                # ledger. Establish a baseline once, without rewriting history or
+                # inventing acquisition dates or past performance.
+                cursor.execute(
                     """
-                    WITH bounds AS (
-                        SELECT entry_id, MIN(id) AS first_id
-                        FROM price_snapshots
-                        GROUP BY entry_id
+                    WITH initialized AS (
+                        INSERT INTO portfolio_performance_settings (id, started_at)
+                        VALUES (1, %s)
+                        ON CONFLICT (id) DO NOTHING
+                        RETURNING started_at
                     ),
-                    initial_value AS (
-                        SELECT
-                            MIN(first.captured_at) AS captured_at,
-                            SUM(first.price * first.quantity) AS total_value
-                        FROM bounds
-                        JOIN price_snapshots first ON first.id = bounds.first_id
-                        JOIN tracked_entries te ON te.entry_id = first.entry_id AND te.active
-                        WHERE first.currency = 'EUR'
+                    latest AS (
+                        SELECT DISTINCT ON (entry_id)
+                            entry_id, quantity, currency, price
+                        FROM price_snapshots
+                        ORDER BY entry_id, captured_at DESC, id DESC
                     )
-                    INSERT INTO portfolio_value_snapshots (
-                        total_value, currency, active_entries, captured_at
-                    )
+                    INSERT INTO portfolio_entry_performance (entry_id, quantity, currency, price)
                     SELECT
-                        initial_value.total_value,
-                        'EUR',
-                        (
-                            SELECT COUNT(*)
-                            FROM tracked_entries
-                            WHERE active
-                        ),
-                        initial_value.captured_at
-                    FROM initial_value
-                    WHERE initial_value.captured_at IS NOT NULL
-                      AND initial_value.total_value IS NOT NULL
-                      AND NOT EXISTS (
-                          SELECT 1
-                          FROM portfolio_value_snapshots existing
-                          WHERE existing.currency = 'EUR'
-                            AND existing.captured_at <= initial_value.captured_at
-                      )
-                    """
+                        latest.entry_id,
+                        CASE WHEN te.active THEN latest.quantity ELSE 0 END,
+                        latest.currency,
+                        latest.price
+                    FROM latest
+                    JOIN tracked_entries te ON te.entry_id = latest.entry_id
+                    WHERE EXISTS (SELECT 1 FROM initialized)
+                    ON CONFLICT (entry_id) DO NOTHING
+                    """,
+                    (datetime.now(UTC),),
                 )
             self.connection.commit()
         except Exception:

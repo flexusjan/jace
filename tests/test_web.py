@@ -169,12 +169,18 @@ class WebPayloadTest(unittest.TestCase):
                     captured_at=datetime(2026, 1, 1, tzinfo=UTC),
                     total_value=Decimal("12.50"),
                     currency="EUR",
+                    price_change=Decimal("2.50"),
+                    performance_started_at=datetime(2025, 12, 1, tzinfo=UTC),
                 )
             ]
         )
 
         self.assertEqual(payload["history"][0]["total_value"], "12.50")
         self.assertEqual(payload["history"][0]["currency"], "EUR")
+        self.assertEqual(payload["history"][0]["price_change"], "2.50")
+        self.assertEqual(
+            payload["history"][0]["performance_started_at"], "2025-12-01T00:00:00+00:00"
+        )
 
     def test_summary_payload_formats_homepage_widget_values(self):
         report = ReportPage(
@@ -192,14 +198,30 @@ class WebPayloadTest(unittest.TestCase):
                     captured_at=datetime(2026, 7, 4, tzinfo=UTC),
                     total_value=Decimal("12426.12"),
                     currency="EUR",
+                    price_change=Decimal("103.19"),
+                    performance_started_at=datetime(2026, 5, 3, tzinfo=UTC),
                 ),
             ],
         )
 
         self.assertEqual(payload["cards"], 2331)
         self.assertEqual(payload["total_value"], "12426.12 EUR")
-        self.assertEqual(payload["change"], "+403.19 EUR")
+        self.assertEqual(payload["change"], "+103.19 EUR")
+        self.assertEqual(payload["change_since"], "2026-05-03T00:00:00+00:00")
         self.assertEqual(payload["currency"], "EUR")
+
+    def test_legacy_value_history_does_not_claim_price_gain(self):
+        history = [
+            ValueHistoryPoint(
+                datetime(2026, month, 1, tzinfo=UTC), Decimal(value), "EUR"
+            )
+            for month, value in [(1, "10"), (9, "30")]
+        ]
+        payload = summary_payload(ReportPage([], 1, Decimal(30), "EUR"), history)
+
+        self.assertIsNone(payload["change"])
+        self.assertIsNone(payload["change_since"])
+        self.assertIsNone(value_history_payload(history)["history"][0]["price_change"])
 
     def test_summary_payload_handles_missing_history(self):
         report = ReportPage(rows=[], total_count=0, total_value=None, currency=None)
